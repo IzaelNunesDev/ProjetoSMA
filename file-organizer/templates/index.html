@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agente Organizador de Arquivos</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        #chat-container { width: 90%; max-width: 800px; height: 90vh; background-color: #1e1e1e; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
+        #messages { flex-grow: 1; overflow-y: auto; padding: 20px; border-bottom: 1px solid #333; }
+        .message { margin-bottom: 15px; display: flex; flex-direction: column; }
+        .message.user { align-items: flex-end; }
+        .message.agent { align-items: flex-start; }
+        .message .content { max-width: 70%; padding: 10px 15px; border-radius: 18px; line-height: 1.5; }
+        .message.user .content { background-color: #005fff; color: white; border-bottom-right-radius: 4px; }
+        .message.agent .content { background-color: #333; color: #f1f1f1; border-bottom-left-radius: 4px; }
+        .log-message { font-family: 'Courier New', Courier, monospace; font-size: 0.8em; color: #999; margin-top: 5px; white-space: pre-wrap; }
+        #form { display: flex; padding: 20px; gap: 10px; }
+        input { flex-grow: 1; padding: 10px; border: 1px solid #444; background-color: #252525; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
+        button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; }
+        button:hover { background-color: #005fff; }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="messages"></div>
+        <form id="form">
+            <input id="dir_input" type="text" placeholder="Digite o caminho do diretório (ex: ~/Downloads)" autocomplete="off" required>
+            <input id="goal_input" type="text" placeholder="Qual o objetivo? (ex: Organizar por tipo)" autocomplete="off" required>
+            <button>Organizar</button>
+        </form>
+    </div>
+
+    <script>
+        const messages = document.getElementById('messages');
+        const form = document.getElementById('form');
+        const dirInput = document.getElementById('dir_input');
+        const goalInput = document.getElementById('goal_input');
+
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+        function addMessageToChat(type, content, level = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', type);
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.classList.add('content');
+            
+            if (type === 'agent' && typeof content === 'object') {
+                contentDiv.innerHTML = `<p>${content.message}</p><p class="log-message">${JSON.stringify(content.data, null, 2)}</p>`;
+            } else {
+                contentDiv.textContent = content;
+            }
+
+            if (type === 'log') {
+                contentDiv.classList.add('log-message');
+                contentDiv.style.alignSelf = 'center';
+                contentDiv.style.maxWidth = '100%';
+                contentDiv.style.backgroundColor = 'transparent';
+                contentDiv.style.color = level === 'error' ? '#ff5555' : '#888';
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log') {
+                addMessageToChat('log', `[${data.level.toUpperCase()}] ${data.message}`, data.level);
+            } else if (data.type === 'result') {
+                addMessageToChat('agent', {message: 'Organização concluída!', data: data.data});
+            } else if (data.type === 'error') {
+                addMessageToChat('agent', `Erro: ${data.message}`);
+            }
+        };
+
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const directory = dirInput.value;
+            const goal = goalInput.value;
+            if (directory && goal) {
+                const payload = { directory: directory, goal: goal };
+                ws.send(JSON.stringify(payload));
+                addMessageToChat('user', `Organizar: "${directory}"\nObjetivo: "${goal}"`);
+                goalInput.value = '';
+            }
+        });
+
+        // Adiciona uma mensagem inicial
+        addMessageToChat('agent', 'Olá! Sou seu agente organizador de arquivos. Por favor, me diga qual diretório você quer organizar e qual o seu objetivo.');
+
+    </script>
+</body>
+</html>

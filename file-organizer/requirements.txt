@@ -1,0 +1,11 @@
+fastmcp @ git+https://github.com/jlowin/fastmcp.git
+google-generativeai
+python-dotenv
+PyMuPDF
+Pillow
+rich
+typer
+fastapi
+uvicorn
+python-multipart
+jinja2
