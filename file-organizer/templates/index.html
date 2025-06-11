@@ -40,24 +40,30 @@
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
 
         function addMessageToChat(type, content, level = 'info') {
+            // Logs são tratados de forma diferente: como linhas simples, não balões de chat.
+            if (type === 'log') {
+                const logDiv = document.createElement('div');
+                logDiv.classList.add('log-message');
+                logDiv.textContent = content;
+                // Melhora a visibilidade da cor do log
+                logDiv.style.color = level === 'error' ? '#ff6b6b' : '#aaa';
+                messages.appendChild(logDiv);
+                messages.scrollTop = messages.scrollHeight;
+                return;
+            }
+
+            // Lógica para mensagens de 'usuário' e 'agente' (balões)
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message', type);
             
             const contentDiv = document.createElement('div');
             contentDiv.classList.add('content');
             
-            if (type === 'agent' && typeof content === 'object') {
-                contentDiv.innerHTML = `<p>${content.message}</p><p class="log-message">${JSON.stringify(content.data, null, 2)}</p>`;
+            // Formata a exibição do resultado final para melhor leitura
+            if (type === 'agent' && typeof content === 'object' && content.data) {
+                contentDiv.innerHTML = `<p>${content.message}</p><pre style="background-color: #2a2a2a; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(content.data, null, 2)}</pre>`;
             } else {
                 contentDiv.textContent = content;
-            }
-
-            if (type === 'log') {
-                contentDiv.classList.add('log-message');
-                contentDiv.style.alignSelf = 'center';
-                contentDiv.style.maxWidth = '100%';
-                contentDiv.style.backgroundColor = 'transparent';
-                contentDiv.style.color = level === 'error' ? '#ff5555' : '#888';
             }
             
             messageDiv.appendChild(contentDiv);
@@ -67,12 +73,15 @@
 
         ws.onmessage = function(event) {
             const data = JSON.parse(event.data);
+            console.log("Received data:", data); // Adiciona log para depuração no console do navegador
+
             if (data.type === 'log') {
-                addMessageToChat('log', `[${data.level.toUpperCase()}] ${data.message}`, data.level);
+                // A cor já indica o status (erro/info), então o texto pode ser mais limpo
+                addMessageToChat('log', data.message, data.level);
             } else if (data.type === 'result') {
-                addMessageToChat('agent', {message: 'Organização concluída!', data: data.data});
+                addMessageToChat('agent', {message: '✅ Organização concluída!', data: data.data});
             } else if (data.type === 'error') {
-                addMessageToChat('agent', `Erro: ${data.message}`);
+                addMessageToChat('agent', `❌ Erro: ${data.message}`);
             }
         };
 
@@ -84,6 +93,8 @@
                 const payload = { directory: directory, goal: goal };
                 ws.send(JSON.stringify(payload));
                 addMessageToChat('user', `Organizar: "${directory}"\nObjetivo: "${goal}"`);
+                // Limpa ambos os campos após o envio
+                dirInput.value = '';
                 goalInput.value = '';
             }
         });

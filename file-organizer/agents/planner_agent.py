@@ -1,7 +1,7 @@
 # agents/planner_agent.py
 import os
 import google.generativeai as genai
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 # Carrega a chave de API do .env
 from dotenv import load_dotenv
@@ -10,11 +10,13 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 mcp = FastMCP(name="PlannerAgent")
 
 @mcp.tool
-def create_organization_plan(files_metadata: list[dict], user_goal: str = "Organize por tipo de arquivo") -> list[dict]:
+async def create_organization_plan(files_metadata: list[dict], user_goal: str, ctx: Context) -> list[dict]:
     """
     Cria um plano de organização de arquivos baseado nos metadados e no objetivo do usuário.
     O plano consiste em uma lista de ações: CREATE_FOLDER, MOVE_FILE.
     """
+    await ctx.log("Criando plano com base no objetivo: '{}'".format(user_goal), level="info")
+    
     model = genai.GenerativeModel('gemini-1.5-flash')
 
     prompt = f"""
@@ -32,19 +34,17 @@ def create_organization_plan(files_metadata: list[dict], user_goal: str = "Organ
     Retorne APENAS a lista JSON do plano, nada mais.
     """
 
-    response = model.generate_content(prompt)
-    
-    # Limpa a resposta do LLM para extrair apenas o JSON
-    import json
     try:
+        response = await model.generate_content_async(prompt)
+        await ctx.log("📝 Resposta da IA recebida, processando o plano...", level="info")
+        
+        # Limpa a resposta do LLM para extrair apenas o JSON
+        import json
         plan_str = response.text.strip().replace("```json", "").replace("```", "")
         plan = json.loads(plan_str)
         return plan
-    except (json.JSONDecodeError, AttributeError) as e:
-        print(f"Erro ao decodificar o plano: {e}")
-        return [{"action": "ERROR", "details": str(e)}]
-
-
-if __name__ == "__main__":
-    print("PlannerAgent rodando...")
-    mcp.run()
+    except Exception as e:
+        error_message = f"Erro ao gerar ou decodificar o plano da IA: {e}"
+        await ctx.log(error_message, level="error")
+        # Levanta uma exceção para que o hub possa capturá-la.
+        raise ValueError(error_message)

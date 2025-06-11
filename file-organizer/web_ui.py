@@ -1,14 +1,12 @@
-import asyncio
+# web_ui.py
 import json
-from pathlib import Path
-
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from main_orchestrator import hub_mcp  # Importamos nosso hub já configurado
+from hub import hub_mcp  # <-- Importa do novo arquivo 'hub.py'
 from fastmcp import Client
-from fastmcp.client.logging import LogMessage
+from mcp.types import LoggingMessageNotificationParams # Corrected import
 
 # Configuração do FastAPI e dos templates
 app = FastAPI()
@@ -19,15 +17,20 @@ class WebSocketLogHandler:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
 
-    async def handle(self, message: LogMessage):
+    async def handle_log(self, message: LoggingMessageNotificationParams):
         """Envia a mensagem de log formatada para o cliente via WebSocket."""
-        await self.websocket.send_json({
-            "type": "log",
-            "level": message.level,
-            "message": message.data
-        })
+        try:
+            await self.websocket.send_json({
+                "type": "log",
+                "level": message.level,
+                "message": message.data
+            })
+        except WebSocketDisconnect:
+            print("Tentativa de log em WebSocket desconectado.")
+        except Exception as e:
+            print(f"Erro ao enviar log via WebSocket: {e}")
 
-# Endpoint para servir a página principal do chat
+# Endpoint para servir a página principal
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -36,10 +39,10 @@ async def get_chat_page(request: Request):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    log_handler = WebSocketLogHandler(websocket)
     
     try:
         while True:
-            # 1. Espera a mensagem do usuário (com o diretório e o objetivo)
             data = await websocket.receive_text()
             payload = json.loads(data)
             
@@ -50,26 +53,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "message": "Diretório e objetivo são obrigatórios."})
                 continue
             
-            # 2. Cria o handler de log para esta conexão WebSocket específica
-            log_handler = WebSocketLogHandler(websocket)
-            
-            # 3. Usa um cliente MCP em memória para chamar a ferramenta do nosso hub
-            # Passamos o nosso handler de log para o cliente.
-            # O Context dentro da ferramenta 'organize_directory' usará este handler.
-            async with Client(hub_mcp, log_handler=log_handler.handle) as client:
+            # Usando o cliente em memória para chamar a ferramenta do hub
+            async with Client(hub_mcp, log_handler=log_handler.handle_log) as client:
                 try:
-                    # 4. Chama a ferramenta de orquestração
                     result = await client.call_tool(
                         "organize_directory",
                         {
                             "directory_path": directory_path,
                             "user_goal": user_goal,
-                            "auto_approve": True # Para a UI, vamos aprovar automaticamente
+                            "auto_approve": True
                         }
                     )
                     
-                    # 5. Envia o resultado final
-                    final_result = json.loads(result[0].text) if result else {"status": "error", "details": "Nenhum resultado."}
+                    final_result = json.loads(result[0].text) if result and not result[0].isError else {"status": "error", "details": "Nenhum resultado retornado."}
                     await websocket.send_json({"type": "result", "data": final_result})
 
                 except Exception as e:
@@ -77,3 +73,5 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("Cliente desconectado.")
+    except Exception as e:
+        print(f"Erro inesperado na conexão WebSocket: {e}")
