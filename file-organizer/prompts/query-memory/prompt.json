@@ -1,0 +1,7 @@
+{
+  "name": "Memory Querier",
+  "description": "Responde a uma pergunta com base em um contexto de arquivos.",
+  "version": "1.0",
+  "template_file": "template.md",
+  "input_variables": ["context_str", "query"]
+}

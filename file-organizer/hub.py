@@ -1,18 +1,18 @@
 # hub.py
 import json
+from pathlib import Path
 from fastmcp import FastMCP, Context
 from rich.console import Console
 from rich.prompt import Confirm
 
-# Importa as FUNÇÕES dos agentes diretamente, não as instâncias mcp
+# Importa as FUNÇÕES dos agentes diretamente
 from agents.scanner_agent import scan_directory
 from agents.planner_agent import create_organization_plan
-from agents.executor_agent import create_folder, move_file
+from agents.executor_agent import create_folder, move_file, move_folder
 
 console = Console()
 
-# Cria o hub principal. Ele só precisa ter a ferramenta de orquestração.
-hub_mcp = FastMCP(name="Hub")
+hub_mcp = FastMCP(name="FileOrganizerHub")
 
 @hub_mcp.tool
 async def organize_directory(
@@ -25,22 +25,37 @@ async def organize_directory(
     Orquestra o processo completo de organização de um diretório chamando as funções dos agentes diretamente.
     """
     try:
-        await ctx.log(f"Iniciando organização para o diretório: '{directory_path}' com o objetivo: '{user_goal}'", level="info")
+        root_dir = Path(directory_path).expanduser().resolve()
+        await ctx.log(f"Iniciando organização para o diretório: '{root_dir}' com o objetivo: '{user_goal}'", level="info")
 
         # 1. Escanear
-        metadata_list = await scan_directory(directory_path=directory_path, ctx=ctx)
+        await ctx.log("🔍 Escaneando diretório...", level="info")
+        metadata_list = await scan_directory.fn(directory_path=directory_path, ctx=ctx)
+        
+        if not metadata_list:
+            msg = "Nenhum arquivo encontrado para organizar."
+            await ctx.log(msg, level="info")
+            return {"status": "success", "details": msg}
+
+        await ctx.log(f"✅ Análise concluída. {len(metadata_list)} arquivos encontrados.", level="info")
 
         # 2. Planejar
+        await ctx.log("🧠 Criando um plano de organização...", level="info")
         plan = await create_organization_plan(files_metadata=metadata_list, user_goal=user_goal, ctx=ctx)
         
+        if not plan or not isinstance(plan, list) or not all('action' in p for p in plan):
+             msg = "O agente de planejamento retornou um plano inválido."
+             await ctx.log(msg, level="error")
+             return {"status": "error", "details": msg}
+
         await ctx.log("📝 Plano gerado:", level="info")
-        plan_details = "\n".join([f"  - {a['action']}: {a.get('path') or a.get('from')}" for a in plan])
+        plan_details = "\n".join([f"  - {a.get('action', 'AÇÃO INDEFINIDA')}: {a.get('path') or a.get('from', 'N/A')}" for a in plan])
         await ctx.log(plan_details, level="info")
 
-        # 3. Confirmar (Lógica CLI, pulada na UI)
+        # 3. Confirmar (Lógica CLI, pulada na UI se auto_approve=True)
         if not auto_approve:
             if not Confirm.ask("\n[bold yellow]Você aprova este plano?[/]"):
-                await ctx.log("❌ Organização cancelada pelo usuário.", level="info")
+                await ctx.log("❌ Organização cancelada pelo usuário.", level="warning")
                 return {"status": "cancelled"}
 
         # 4. Executar
@@ -48,16 +63,27 @@ async def organize_directory(
         execution_summary = []
         for action in plan:
             action_type = action.get("action")
-            result = None
+            result = {}
+            
             if action_type == "CREATE_FOLDER":
-                result = await create_folder(path=action.get("path"), root_directory=directory_path, ctx=ctx)
+                result = await create_folder.fn(path=action.get("path"), root_directory=directory_path, ctx=ctx)
             elif action_type == "MOVE_FILE":
-                result = await move_file(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
+                result = await move_file.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
+            # --- NOVA LÓGICA DE EXECUÇÃO ---
+            elif action_type == "MOVE_FOLDER":
+                result = await move_folder.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
+            # -------------------------------
             else:
                 result = {"status": "skipped", "details": f"Ação desconhecida: {action_type}"}
             
             execution_summary.append(result)
 
+            if result.get("status") == "error":
+                await ctx.log(f"❌ Falha na ação: {result.get('details')}", level="error")
+                if not auto_approve and not Confirm.ask("[bold yellow]Continuar com as próximas ações?[/]"):
+                    await ctx.log("🛑 Execução interrompida.", level="warning")
+                    break
+        
         await ctx.log("\n✨ Organização finalizada! ✨", level="info")
         return {"status": "success", "summary": execution_summary}
 

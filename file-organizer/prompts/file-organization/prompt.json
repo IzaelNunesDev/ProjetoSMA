@@ -1,0 +1,7 @@
+{
+  "name": "File Organization Planner",
+  "description": "Cria um plano JSON para mover e criar pastas com base em metadados de arquivos e um objetivo.",
+  "version": "1.0",
+  "template_file": "template.md",
+  "input_variables": ["user_goal", "files_metadata"]
+}

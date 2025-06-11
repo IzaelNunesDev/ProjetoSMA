@@ -4,9 +4,9 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from hub import hub_mcp  # <-- Importa do novo arquivo 'hub.py'
+from hub import hub_mcp
 from fastmcp import Client
-from mcp.types import LoggingMessageNotificationParams # Corrected import
+from fastmcp.client.logging import LogMessage # <-- Importação corrigida
 
 # Configuração do FastAPI e dos templates
 app = FastAPI()
@@ -17,7 +17,7 @@ class WebSocketLogHandler:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
 
-    async def handle_log(self, message: LoggingMessageNotificationParams):
+    async def handle_log(self, message: LogMessage):
         """Envia a mensagem de log formatada para o cliente via WebSocket."""
         try:
             await self.websocket.send_json({
@@ -65,7 +65,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         }
                     )
                     
-                    final_result = json.loads(result[0].text) if result and not result[0].isError else {"status": "error", "details": "Nenhum resultado retornado."}
+                    final_result = json.loads(result[0].text) if result else {"status": "error", "details": "Nenhum resultado retornado."}
                     await websocket.send_json({"type": "result", "data": final_result})
 
                 except Exception as e:

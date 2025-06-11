@@ -7,9 +7,12 @@ mcp = FastMCP(name="ExecutorAgent")
 
 def _is_path_safe(path_to_check: Path, root_directory: Path) -> bool:
     """Verifica se um caminho está contido com segurança no diretório raiz."""
-    safe_root = root_directory.resolve()
-    target_path = Path(path_to_check).resolve()
-    return target_path.is_relative_to(safe_root)
+    try:
+        safe_root = root_directory.resolve()
+        target_path = Path(path_to_check).resolve()
+        return target_path.is_relative_to(safe_root)
+    except Exception:
+        return False
 
 @mcp.tool
 async def create_folder(path: str, root_directory: str, ctx: Context) -> dict:
@@ -50,4 +53,26 @@ async def move_file(from_path: str, to_path: str, root_directory: str, ctx: Cont
         await ctx.log(msg, level="error")
         return {"status": "error", "details": msg}
 
-# REMOVA o bloco if __name__ == "__main__":
+@mcp.tool
+async def move_folder(from_path: str, to_path: str, root_directory: str, ctx: Context) -> dict:
+    """Move uma pasta inteira de forma segura."""
+    source = Path(from_path)
+    destination_dir = Path(to_path) # O destino é a pasta que conterá a pasta movida
+    root = Path(root_directory)
+
+    # Garante que a origem e o destino estejam dentro do diretório raiz
+    if not _is_path_safe(source, root) or not _is_path_safe(destination_dir, root):
+        msg = f"Acesso negado: Operação de mover pasta '{source}' para '{destination_dir}' está fora do diretório permitido."
+        await ctx.log(msg, level="error")
+        return {"status": "error", "details": msg}
+    
+    try:
+        destination_path = destination_dir / source.name
+        await ctx.log(f"  - Movendo pasta: {source.name} -> {destination_path}", level="info")
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(destination_path))
+        return {"status": "success", "action": "move_folder", "from": from_path, "to": str(destination_path)}
+    except Exception as e:
+        msg = f"Falha ao mover a pasta '{source}': {e}"
+        await ctx.log(msg, level="error")
+        return {"status": "error", "details": msg}
