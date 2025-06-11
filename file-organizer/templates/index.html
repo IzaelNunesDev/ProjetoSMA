@@ -19,89 +19,147 @@
         input { flex-grow: 1; padding: 10px; border: 1px solid #444; background-color: #252525; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
         button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; }
         button:hover { background-color: #005fff; }
+        select { flex-shrink: 0; padding: 10px; border: 1px solid #444; background-color: #252525; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+        .hidden { display: none; }
+        #form { flex-wrap: wrap; }
     </style>
 </head>
 <body>
     <div id="chat-container">
         <div id="messages"></div>
         <form id="form">
-            <input id="dir_input" type="text" placeholder="Digite o caminho do diretório (ex: ~/Downloads)" autocomplete="off" required>
-            <input id="goal_input" type="text" placeholder="Qual o objetivo? (ex: Organizar por tipo)" autocomplete="off" required>
-            <button>Organizar</button>
+            <select id="action_select">
+                <option value="organize">Organizar Arquivos</option>
+                <option value="index">Indexar Diretório (Criar Memória)</option>
+                <option value="query">Consultar Memória</option>
+            </select>
+            
+            <div id="organize_inputs" class="input-group">
+                <input id="dir_input_organize" type="text" placeholder="Caminho do diretório para organizar" autocomplete="off">
+                <input id="goal_input" type="text" placeholder="Objetivo (ex: por tipo)" autocomplete="off">
+            </div>
+
+            <div id="index_inputs" class="input-group hidden">
+                <input id="dir_input_index" type="text" placeholder="Caminho do diretório para indexar" autocomplete="off">
+            </div>
+
+            <div id="query_inputs" class="input-group hidden">
+                <input id="query_input" type="text" placeholder="Sua pergunta sobre os arquivos" autocomplete="off">
+            </div>
+
+            <button id="submit_button" style="width: 100%; margin-top: 10px;">Executar</button>
         </form>
     </div>
 
     <script>
         const messages = document.getElementById('messages');
         const form = document.getElementById('form');
-        const dirInput = document.getElementById('dir_input');
+        const actionSelect = document.getElementById('action_select');
+        
+        // Input groups
+        const organizeInputs = document.getElementById('organize_inputs');
+        const indexInputs = document.getElementById('index_inputs');
+        const queryInputs = document.getElementById('query_inputs');
+
+        // Inputs individuais
+        const dirInputOrganize = document.getElementById('dir_input_organize');
         const goalInput = document.getElementById('goal_input');
+        const dirInputIndex = document.getElementById('dir_input_index');
+        const queryInput = document.getElementById('query_input');
+        const submitButton = document.getElementById('submit_button');
 
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
 
         function addMessageToChat(type, content, level = 'info') {
-            // Logs são tratados de forma diferente: como linhas simples, não balões de chat.
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', type);
+
+            const contentDiv = document.createElement('div');
+            contentDiv.classList.add('content');
+            
             if (type === 'log') {
                 const logDiv = document.createElement('div');
                 logDiv.classList.add('log-message');
                 logDiv.textContent = content;
-                // Melhora a visibilidade da cor do log
-                logDiv.style.color = level === 'error' ? '#ff6b6b' : '#aaa';
-                messages.appendChild(logDiv);
-                messages.scrollTop = messages.scrollHeight;
-                return;
-            }
-
-            // Lógica para mensagens de 'usuário' e 'agente' (balões)
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', type);
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.classList.add('content');
-            
-            // Formata a exibição do resultado final para melhor leitura
-            if (type === 'agent' && typeof content === 'object' && content.data) {
+                logDiv.style.color = level === 'error' ? '#ff6b6b' : (level === 'warning' ? '#f9ca24' : '#aaa');
+                messagesContainer.appendChild(logDiv);
+            } else if (type === 'query_result') {
+                 contentDiv.innerHTML = `<strong>Resposta:</strong><p>${content.answer}</p><p><small>Fontes: ${content.source_files.join(', ') || 'N/A'}</small></p>`;
+                 messageDiv.appendChild(contentDiv);
+                 messagesContainer.appendChild(messageDiv);
+            } else if (type === 'agent' && typeof content === 'object' && content.data) {
                 contentDiv.innerHTML = `<p>${content.message}</p><pre style="background-color: #2a2a2a; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(content.data, null, 2)}</pre>`;
+                messageDiv.appendChild(contentDiv);
+                messagesContainer.appendChild(messageDiv);
             } else {
                 contentDiv.textContent = content;
+                messageDiv.appendChild(contentDiv);
+                messagesContainer.appendChild(messageDiv);
             }
             
-            messageDiv.appendChild(contentDiv);
-            messages.appendChild(messageDiv);
-            messages.scrollTop = messages.scrollHeight;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         ws.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            console.log("Received data:", data); // Adiciona log para depuração no console do navegador
+            console.log("Received data:", data);
 
             if (data.type === 'log') {
-                // A cor já indica o status (erro/info), então o texto pode ser mais limpo
                 addMessageToChat('log', data.message, data.level);
             } else if (data.type === 'result') {
-                addMessageToChat('agent', {message: '✅ Organização concluída!', data: data.data});
+                addMessageToChat('agent', {message: '✅ Operação concluída!', data: data.data});
+            } else if (data.type === 'query_result') {
+                addMessageToChat('query_result', data.data);
             } else if (data.type === 'error') {
                 addMessageToChat('agent', `❌ Erro: ${data.message}`);
             }
         };
 
-        form.addEventListener('submit', function(event) {
-            event.preventDefault();
-            const directory = dirInput.value;
-            const goal = goalInput.value;
-            if (directory && goal) {
-                const payload = { directory: directory, goal: goal };
-                ws.send(JSON.stringify(payload));
-                addMessageToChat('user', `Organizar: "${directory}"\nObjetivo: "${goal}"`);
-                // Limpa ambos os campos após o envio
-                dirInput.value = '';
-                goalInput.value = '';
-            }
+        actionSelect.addEventListener('change', () => {
+            const selectedAction = actionSelect.value;
+            organizeInputs.classList.toggle('hidden', selectedAction !== 'organize');
+            indexInputs.classList.toggle('hidden', selectedAction !== 'index');
+            queryInputs.classList.toggle('hidden', selectedAction !== 'query');
+            submitButton.textContent = selectedAction === 'query' ? 'Perguntar' : 'Executar';
         });
 
-        // Adiciona uma mensagem inicial
-        addMessageToChat('agent', 'Olá! Sou seu agente organizador de arquivos. Por favor, me diga qual diretório você quer organizar e qual o seu objetivo.');
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const action = actionSelect.value;
+            let payload = { action };
+            let userMessage = '';
 
+            if (action === 'organize') {
+                payload.directory = dirInputOrganize.value;
+                payload.goal = goalInput.value;
+                if (!payload.directory || !payload.goal) {
+                    alert('Por favor, preencha o caminho do diretório e o objetivo.');
+                    return;
+                }
+                userMessage = `Organizar: "${payload.directory}"\nObjetivo: "${payload.goal}"`;
+            } else if (action === 'index') {
+                payload.directory = dirInputIndex.value;
+                if (!payload.directory) {
+                    alert('Por favor, preencha o caminho do diretório.');
+                    return;
+                }
+                userMessage = `Indexar diretório: "${payload.directory}"`;
+            } else if (action === 'query') {
+                payload.query = queryInput.value;
+                if (!payload.query) {
+                    alert('Por favor, insira sua pergunta.');
+                    return;
+                }
+                userMessage = `Consultar: "${payload.query}"`;
+            }
+            
+            ws.send(JSON.stringify(payload));
+            addMessageToChat('user', userMessage);
+        });
+
+        addMessageToChat('agent', 'Olá! Sou seu agente de arquivos. Escolha uma ação, preencha os campos e clique para começar.');
     </script>
 </body>
 </html>

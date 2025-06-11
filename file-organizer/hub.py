@@ -10,6 +10,7 @@ from agents.scanner_agent import scan_directory
 from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
 
+
 console = Console()
 
 hub_mcp = FastMCP(name="FileOrganizerHub")
@@ -41,7 +42,7 @@ async def organize_directory(
 
         # 2. Planejar
         await ctx.log("🧠 Criando um plano de organização...", level="info")
-        plan = await create_organization_plan(files_metadata=metadata_list, user_goal=user_goal, ctx=ctx)
+        plan = await create_organization_plan.fn(files_metadata=metadata_list, user_goal=user_goal, ctx=ctx)
         
         if not plan or not isinstance(plan, list) or not all('action' in p for p in plan):
              msg = "O agente de planejamento retornou um plano inválido."
