@@ -76,6 +76,11 @@ async def websocket_endpoint(websocket: WebSocket):
             async with Client(hub_mcp, log_handler=log_handler.handle_log) as client:
                 try:
                     result = await client.call_tool(tool_name, tool_params)
+
+                    if result and result[0]:
+                        final_result_text = result[0].text
+                    else:
+                        final_result_text = '{"status": "error", "details": "A ferramenta não retornou resultado."}'
                     
                     final_result_text = result[0].text if result and not result[0].isError else '{"status": "error", "details": "Nenhum resultado retornado."}'
                     final_result = json.loads(final_result_text)

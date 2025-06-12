@@ -10,3 +10,4 @@ uvicorn
 python-multipart
 jinja2
 websockets
+numpy  

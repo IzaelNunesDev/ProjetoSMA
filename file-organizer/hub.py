@@ -9,6 +9,7 @@ from rich.prompt import Confirm
 from agents.scanner_agent import scan_directory
 from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
+from agents.memory_agent import index_directory, query_memory
 
 
 console = Console()
@@ -93,3 +94,17 @@ async def organize_directory(
         await ctx.log(error_message, level="error")
         console.print_exception()
         return {"status": "error", "details": error_message}
+
+@hub_mcp.tool
+async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:
+    """
+    Ferramenta do hub para chamar a função de indexação do agente de memória.
+    """
+    return await index_directory.fn(directory_path=directory_path, ctx=ctx)
+
+@hub_mcp.tool
+async def query_files_in_memory(query: str, ctx: Context) -> dict:
+    """
+    Ferramenta do hub para chamar a função de consulta do agente de memória.
+    """
+    return await query_memory.fn(query=query, ctx=ctx)
