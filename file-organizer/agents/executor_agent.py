@@ -2,11 +2,11 @@
 import shutil
 from pathlib import Path
 from fastmcp import FastMCP, Context
+from agents.memory_agent import post_memory_experience # <<< NOVA IMPORTAÇÃO
 
 mcp = FastMCP(name="ExecutorAgent")
 
-# <<< NEW: Variable to store the number of indexed files >>>
-_indexed_files_count = None  # Initialize to None, indicating count is not yet set
+
 
 def _is_path_safe(path_to_check: Path, root_directory: Path) -> bool:
     """Verifica se um caminho está contido com segurança no diretório raiz."""
@@ -28,6 +28,16 @@ async def create_folder(path: str, root_directory: str, ctx: Context) -> dict:
     try:
         await ctx.log(f"  - Criando pasta: {path}", level="info")
         Path(path).mkdir(parents=True, exist_ok=True)
+        
+        # --- Postar no Hive Mind ---
+        await post_memory_experience.fn(
+            experience=f"Criei a pasta '{Path(path).name}' em '{Path(path).parent}'.",
+            tags=["create_folder", "maintenance"],
+            source_agent="ExecutorAgent",
+            ctx=ctx
+        )
+        # ---------------------------
+
         return {"status": "success", "action": "create_folder", "path": path}
     except Exception as e:
         msg = f"Falha ao criar pasta '{path}': {e}"
@@ -50,6 +60,17 @@ async def move_file(from_path: str, to_path: str, root_directory: str, ctx: Cont
         await ctx.log(f"  - Movendo: {source.name} -> {to_path}", level="info")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(destination))
+
+        # --- Postar no Hive Mind ---
+        file_extension = source.suffix.lstrip(".").lower()
+        await post_memory_experience.fn(
+            experience=f"Movi o arquivo '{source.name}' para o diretório '{destination.parent}'.",
+            tags=["move_file", file_extension, "organization"],
+            source_agent="ExecutorAgent",
+            ctx=ctx
+        )
+        # ---------------------------
+
         return {"status": "success", "action": "move_file", "from": from_path, "to": to_path}
     except Exception as e:
         msg = f"Falha ao mover arquivo '{source}': {e}"
@@ -80,68 +101,4 @@ async def move_folder(from_path: str, to_path: str, root_directory: str, ctx: Co
         await ctx.log(msg, level="error")
         return {"status": "error", "details": msg}
 
-@mcp.tool
-async def update_indexed_files_count(count: int, ctx: Context) -> dict:
-    """
-    Atualiza o contador global de arquivos indexados.
-    Esta função deve ser chamada após a conclusão do processo de indexação.
-    """
-    global _indexed_files_count
-    _indexed_files_count = count
-    log_message = f"Contador de arquivos indexados atualizado para: {count}"
-    await ctx.log(log_message, level="info")
-    return {"status": "success", "message": log_message}
 
-@mcp.tool
-async def query_indexed_files_count(query_text: str, ctx: Context) -> dict:
-    """
-    Verifica se a consulta do usuário é sobre a contagem de arquivos indexados.
-    Se for, responde diretamente com a contagem armazenada.
-    Caso contrário, indica que a consulta deve ser processada por outros meios (ex: busca semântica).
-    
-    Esta função deve ser chamada no início do fluxo de processamento de consultas.
-    """
-    global _indexed_files_count
-    
-    # Palavras-chave para identificar perguntas sobre a contagem de arquivos
-    # Ajuste conforme necessário para cobrir mais variações da pergunta
-    keywords = [
-        "quantos arquivos", 
-        "numero de arquivos", # sem acento para simplicidade
-        "arquivos na memoria", 
-        "arquivos indexados",
-        "total de arquivos"
-    ]
-    
-    normalized_query = query_text.lower()
-    
-    is_count_query = any(keyword in normalized_query for keyword in keywords)
-    
-    if is_count_query:
-        if _indexed_files_count is not None:
-            answer = f"Atualmente, há {_indexed_files_count} arquivo(s) indexado(s) na memória."
-            await ctx.log(f"Respondendo à consulta sobre contagem de arquivos: '{query_text}'. Resposta: {answer}", level="info")
-            return {"status": "answered", "answer": answer, "sources": "System Metadata"}
-        else:
-            answer = "A informação sobre a quantidade de arquivos indexados ainda não está disponível."
-            await ctx.log(f"Consulta sobre contagem de arquivos ('{query_text}'), mas contagem não definida.", level="warn")
-            return {"status": "answered", "answer": answer, "sources": "System Metadata"}
-    else:
-        # Indica que esta ferramenta não tratou a consulta e ela deve seguir o fluxo normal (ex: busca semântica)
-        await ctx.log(f"Consulta '{query_text}' não é sobre contagem de arquivos, passando para próximo handler.", level="debug")
-        return {"status": "pass_through", "reason": "Query not related to indexed file count."}
-
-# É importante notar que a integração dessas novas ferramentas no fluxo principal
-# de consulta do agente precisará ser feita no local apropriado. Por exemplo:
-#
-# 1. Após a indexação, o sistema deve chamar `await mcp.get_tool('update_indexed_files_count').call(count=N)`.
-#    (Ou, se você tiver uma instância do agente: `await agent_instance.update_indexed_files_count(count=N, ctx=your_context)`)
-# 2. Quando uma nova consulta do usuário é recebida (ex: "Quantos arquivos há na memoria?"):
-#    a. Primeiro, tente: `response = await mcp.get_tool('query_indexed_files_count').call(query_text=user_query)`
-#       (Ou: `response = await agent_instance.query_indexed_files_count(query_text=user_query, ctx=your_context)`)
-#    b. Se `response['status'] == 'answered'`, use `response['answer']`.
-#    c. Se `response['status'] == 'pass_through'`, prossiga com a busca semântica normal.
-#
-# Este arquivo (executor_agent.py) agora fornece as ferramentas, mas o orquestrador
-# principal do agente (que pode estar em web_ui.py ou outro módulo de agente)
-# precisa ser ajustado para usar essas ferramentas na ordem correta.

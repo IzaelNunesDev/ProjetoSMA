@@ -10,7 +10,9 @@ from agents.scanner_agent import scan_directory
 from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
 from agents.watcher_agent import suggest_organization_for_file as suggest_organization_for_file_func, execute_planned_action as execute_planned_action_func
-from agents.memory_agent import index_directory, query_memory
+# --- NOVAS IMPORTAÇÕES DO HIVE MIND ---
+from agents.memory_agent import index_directory, query_memory, post_memory_experience, get_feed_for_agent
+# ------------------------------------
 from agents.maintenance_agent import find_empty_folders
 
 
@@ -98,6 +100,8 @@ async def organize_directory(
         return {"status": "error", "details": error_message}
 
 hub_mcp.add_tool(find_empty_folders)
+hub_mcp.add_tool(post_memory_experience)
+hub_mcp.add_tool(get_feed_for_agent)
 
 @hub_mcp.tool
 async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:

@@ -72,6 +72,22 @@ async def on_new_file_detected(file_path: str):
     except Exception as e:
         print(f"Erro ao processar novo arquivo {file_path}: {e}")
 
+# --- NOVA ROTA PARA O FEED DO HIVE MIND ---
+@app.get("/feed", response_class=HTMLResponse)
+async def get_feed_page(request: Request):
+    """Renderiza a página com o feed de atividades dos agentes."""
+    try:
+        # Usamos o cliente para chamar a ferramenta do hub
+        async with Client(hub_mcp) as client:
+            # Pega todas as memórias mais recentes (sem filtro de tag)
+            tool_output_parts = await client.call_tool("get_feed_for_agent", {"top_k": 50})
+            raw_output = tool_output_parts[0].text if tool_output_parts and tool_output_parts[0].text else "[]"
+            feed_items = json.loads(raw_output)
+
+        return templates.TemplateResponse(request, "feed.html", {"feed_items": feed_items})
+    except Exception as e:
+        return HTMLResponse(f"<h1>Erro ao carregar o feed:</h1><p>{e}</p>", status_code=500)
+
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_page(request: Request):
     return templates.TemplateResponse(request, "index.html")

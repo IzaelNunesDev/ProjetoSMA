@@ -5,6 +5,8 @@ from fastmcp import FastMCP, Context
 from agents.scanner_agent import scan_directory
 from prompt_manager import prompt_manager
 import json
+from typing import List
+from datetime import datetime
 
 # Simples armazenamento de vetores em memória
 VECTOR_STORE = {
@@ -66,11 +68,16 @@ async def index_directory(directory_path: str, ctx: Context) -> dict:
         embeddings = result['embedding']
 
         VECTOR_STORE["embeddings"] = embeddings
+        # AQUI, GARANTIMOS QUE A METADATA TENHA OS CAMPOS NECESSÁRIOS PARA O HIVE MIND
         VECTOR_STORE["metadata"] = [
             {
                 "path": file["path"],
                 "name": file["name"],
-                "text_chunk": content
+                "text_chunk": content,
+                "content": content, # Redundante, mas útil para o hive mind
+                "source": "scanner_agent", # Fonte da memória
+                "tags": ["index", "scan", file["ext"].lstrip('.')], # Tags iniciais
+                "timestamp": datetime.fromtimestamp(file["modified_at"]).isoformat() # Timestamp
             }
             for file, content in zip(files_with_content, contents_to_embed)
         ]
@@ -153,3 +160,60 @@ async def query_memory(query: str, ctx: Context) -> dict:
     response = await model.generate_content_async(prompt)
     
     return {"answer": response.text, "source_files": list(source_files)}
+
+
+# --- NOVAS FERRAMENTAS DO HIVE MIND ---
+@mcp.tool
+async def post_memory_experience(experience: str, tags: List[str], source_agent: str, ctx: Context) -> dict:
+    """
+    Armazena uma experiência textual como vetor na memória compartilhada (Hive Mind).
+    """
+    global VECTOR_STORE
+    try:
+        await ctx.log(f"HiveMind: Registrando experiência de '{source_agent}' com tags {tags}", level="debug")
+        
+        # Gerar embedding para a experiência
+        result = await genai.embed_content_async(
+            model="models/text-embedding-004",
+            content=experience,
+            task_type="RETRIEVAL_DOCUMENT" # Armazenamos como um documento
+        )
+        embedding = result['embedding']
+
+        metadata = {
+            "source": source_agent,
+            "tags": tags,
+            "content": experience,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        VECTOR_STORE["embeddings"].append(embedding)
+        VECTOR_STORE["metadata"].append(metadata)
+
+        return {"status": "success", "message": "Experiência registrada no Hive Mind com sucesso."}
+    except Exception as e:
+        error_msg = f"Falha ao postar experiência no Hive Mind: {e}"
+        await ctx.log(error_msg, level="error")
+        return {"status": "error", "message": error_msg}
+
+@mcp.tool
+async def get_feed_for_agent(tags_of_interest: List[str] = None, top_k: int = 20, ctx: Context = None) -> List[dict]:
+    """
+    Retorna as memórias mais recentes do Hive Mind, opcionalmente filtradas por tags.
+    """
+    global VECTOR_STORE
+    if tags_of_interest:
+        # Filtra memórias que contêm QUALQUER uma das tags de interesse
+        filtered = [
+            meta for meta in VECTOR_STORE["metadata"] 
+            if any(tag in meta.get("tags", []) for tag in tags_of_interest)
+        ]
+    else:
+        # Se não houver tags, retorna todas as memórias
+        filtered = VECTOR_STORE["metadata"]
+
+    # Ordena o feed pela data (timestamp), do mais novo para o mais antigo
+    sorted_feed = sorted(filtered, key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    return sorted_feed[:top_k]
+
