@@ -12,53 +12,6 @@ watcher_mcp = FastMCP(name="WatcherAgent") # Initialize MCP for watcher agent
 
 # TOOLS PREVIOUSLY REFERRED TO AS "NEW TOOLS"
 @watcher_mcp.tool
-async def suggest_organization_for_file(file_path: str, ctx: Context) -> dict:
-    """Sugere um plano de organização para um único arquivo detectado."""
-    await ctx.log(f"WatcherAgent: Sugerindo organização para: {file_path}", level="info")
-    try:
-        p_file_path = Path(file_path)
-        if not p_file_path.exists() or not p_file_path.is_file():
-            msg = f"Arquivo não encontrado ou não é um arquivo válido: {file_path}"
-            await ctx.log(msg, level="error")
-            return {"status": "error", "details": msg, "plan": []}
-
-        # Criar metadados básicos para o arquivo único
-        file_metadata = {
-            "name": p_file_path.name,
-            "path": str(p_file_path),
-            "size": p_file_path.stat().st_size,
-            "extension": p_file_path.suffix.lower(),
-            "type": "file",
-            "last_modified": p_file_path.stat().st_mtime
-        }
-        files_metadata_list = [file_metadata]
-
-        # Usar um objetivo genérico para o planejador, ou permitir que seja passado?
-        # Por enquanto, um objetivo genérico para organização automática.
-        user_goal = "Organizar este novo arquivo na estrutura de pastas existente ou em uma nova apropriada."
-
-        await ctx.log(f"WatcherAgent: Chamando planner_agent para: {p_file_path.name}", level="debug")
-        plan = await create_organization_plan.fn(
-            files_metadata=files_metadata_list, 
-            user_goal=user_goal, 
-            ctx=ctx
-        )
-
-        if not plan or not isinstance(plan, list):
-            msg = "O agente de planejamento retornou um plano inválido para o arquivo."
-            await ctx.log(msg, level="warning")
-            return {"status": "success", "details": msg, "plan": []} # Retorna sucesso, mas plano vazio
-
-        await ctx.log(f"WatcherAgent: Plano recebido para '{p_file_path.name}': {plan}", level="info")
-        return {"status": "success", "plan": plan}
-
-    except Exception as e:
-        error_message = f"WatcherAgent: Erro ao sugerir organização para {file_path}: {e}"
-        await ctx.log(error_message, level="error")
-        # Idealmente, teríamos uma forma de print_exception aqui também se ctx suportar ou se tivermos console
-        return {"status": "error", "details": error_message, "plan": []}
-
-@watcher_mcp.tool
 async def execute_planned_action(action: dict, root_directory: str, ctx: Context) -> dict:
     """Executa uma única ação de organização planejada."""
     action_type = action.get("action")

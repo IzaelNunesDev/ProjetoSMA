@@ -66,6 +66,12 @@ async def on_new_file_detected(file_path: str):
             else:
                 error_details = suggestion_result.get('details', 'Nenhum detalhe fornecido.')
                 print(f"Falha ao obter sugestão: {error_details}")
+                # --- SUGESTÃO: Enviar erro para a UI ---
+                await manager.broadcast({
+                    "type": "log",
+                    "level": "error",
+                    "message": f"Falha ao gerar sugestão para {Path(file_path).name}: {error_details}"
+                })
 
     except json.JSONDecodeError as e:
         print(f"Erro ao decodificar a resposta JSON da sugestão: {e}. Raw: '{raw_output if 'raw_output' in locals() else 'N/A'}'")

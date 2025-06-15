@@ -5,6 +5,7 @@ Seu objetivo é criar um plano de organização estruturado em JSON com base na 
 Cada item pode ser um 'file' (arquivo) ou um 'directory' (pasta).
 
 O objetivo do usuário é: "{user_goal}"
+O diretório raiz que está sendo organizado é: "{root_directory}"
 
 Analise os seguintes metadados e crie o plano. Você pode mover tanto arquivos quanto diretórios inteiros.
 

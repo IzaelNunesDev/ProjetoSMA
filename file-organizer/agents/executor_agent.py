@@ -5,9 +5,6 @@ from fastmcp import FastMCP, Context
 
 mcp = FastMCP(name="ExecutorAgent")
 
-# <<< NEW: Variable to store the number of indexed files >>>
-_indexed_files_count = None  # Initialize to None, indicating count is not yet set
-
 def _is_path_safe(path_to_check: Path, root_directory: Path) -> bool:
     """Verifica se um caminho está contido com segurança no diretório raiz."""
     try:
@@ -79,57 +76,6 @@ async def move_folder(from_path: str, to_path: str, root_directory: str, ctx: Co
         msg = f"Falha ao mover a pasta '{source}': {e}"
         await ctx.log(msg, level="error")
         return {"status": "error", "details": msg}
-
-@mcp.tool
-async def update_indexed_files_count(count: int, ctx: Context) -> dict:
-    """
-    Atualiza o contador global de arquivos indexados.
-    Esta função deve ser chamada após a conclusão do processo de indexação.
-    """
-    global _indexed_files_count
-    _indexed_files_count = count
-    log_message = f"Contador de arquivos indexados atualizado para: {count}"
-    await ctx.log(log_message, level="info")
-    return {"status": "success", "message": log_message}
-
-@mcp.tool
-async def query_indexed_files_count(query_text: str, ctx: Context) -> dict:
-    """
-    Verifica se a consulta do usuário é sobre a contagem de arquivos indexados.
-    Se for, responde diretamente com a contagem armazenada.
-    Caso contrário, indica que a consulta deve ser processada por outros meios (ex: busca semântica).
-    
-    Esta função deve ser chamada no início do fluxo de processamento de consultas.
-    """
-    global _indexed_files_count
-    
-    # Palavras-chave para identificar perguntas sobre a contagem de arquivos
-    # Ajuste conforme necessário para cobrir mais variações da pergunta
-    keywords = [
-        "quantos arquivos", 
-        "numero de arquivos", # sem acento para simplicidade
-        "arquivos na memoria", 
-        "arquivos indexados",
-        "total de arquivos"
-    ]
-    
-    normalized_query = query_text.lower()
-    
-    is_count_query = any(keyword in normalized_query for keyword in keywords)
-    
-    if is_count_query:
-        if _indexed_files_count is not None:
-            answer = f"Atualmente, há {_indexed_files_count} arquivo(s) indexado(s) na memória."
-            await ctx.log(f"Respondendo à consulta sobre contagem de arquivos: '{query_text}'. Resposta: {answer}", level="info")
-            return {"status": "answered", "answer": answer, "sources": "System Metadata"}
-        else:
-            answer = "A informação sobre a quantidade de arquivos indexados ainda não está disponível."
-            await ctx.log(f"Consulta sobre contagem de arquivos ('{query_text}'), mas contagem não definida.", level="warn")
-            return {"status": "answered", "answer": answer, "sources": "System Metadata"}
-    else:
-        # Indica que esta ferramenta não tratou a consulta e ela deve seguir o fluxo normal (ex: busca semântica)
-        await ctx.log(f"Consulta '{query_text}' não é sobre contagem de arquivos, passando para próximo handler.", level="debug")
-        return {"status": "pass_through", "reason": "Query not related to indexed file count."}
 
 # É importante notar que a integração dessas novas ferramentas no fluxo principal
 # de consulta do agente precisará ser feita no local apropriado. Por exemplo:
