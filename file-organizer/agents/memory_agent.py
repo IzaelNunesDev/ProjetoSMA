@@ -90,6 +90,24 @@ async def query_memory(query: str, ctx: Context) -> dict:
     """
     await ctx.log(f"Recebida a consulta: '{query}'", level="info")
 
+    # --- NEW: Check for meta-query about file count ---
+    normalized_query = query.lower().strip()
+    # Basic check, can be expanded with more phrases or regex
+    if normalized_query in [
+        "quantos arquivos há na memoria?", 
+        "quantos arquivos na memoria?",
+        "quantos arquivos existem na memoria?",
+        "qual o numero de arquivos na memoria?",
+        "numero de arquivos indexados",
+        "how many files in memory?",
+        "how many files are in memory?"
+    ]:
+        num_files = len(VECTOR_STORE["embeddings"])
+        answer = f"Atualmente, há {num_files} arquivo(s) indexado(s) na memória."
+        await ctx.log(f"Respondendo à meta-consulta diretamente: {answer}", level="info")
+        return {"answer": answer, "source_files": ["Memória Interna"]}
+    # --- END NEW ---
+
     if not VECTOR_STORE["embeddings"]:
         return {"answer": "A memória está vazia. Por favor, indexe um diretório primeiro.", "source_files": []}
 

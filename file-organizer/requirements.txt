@@ -10,4 +10,5 @@ uvicorn
 python-multipart
 jinja2
 websockets
-numpy  
+numpy
+watchdog==6.0.0

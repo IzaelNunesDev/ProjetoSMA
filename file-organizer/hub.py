@@ -9,6 +9,7 @@ from rich.prompt import Confirm
 from agents.scanner_agent import scan_directory
 from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
+from agents.watcher_agent import suggest_organization_for_file as suggest_organization_for_file_func, execute_planned_action as execute_planned_action_func
 from agents.memory_agent import index_directory, query_memory
 
 
@@ -108,3 +109,17 @@ async def query_files_in_memory(query: str, ctx: Context) -> dict:
     Ferramenta do hub para chamar a função de consulta do agente de memória.
     """
     return await query_memory.fn(query=query, ctx=ctx)
+
+@hub_mcp.tool
+async def suggest_organization_for_file(file_path: str, ctx: Context) -> dict:
+    """
+    Ferramenta do hub para chamar a função de sugestão do agente observador.
+    """
+    return await suggest_organization_for_file_func.fn(file_path=file_path, ctx=ctx)
+
+@hub_mcp.tool
+async def execute_planned_action(action: dict, root_directory: str, ctx: Context) -> dict:
+    """
+    Ferramenta do hub para chamar a função de execução de ação do agente observador.
+    """
+    return await execute_planned_action_func.fn(action=action, root_directory=root_directory, ctx=ctx)

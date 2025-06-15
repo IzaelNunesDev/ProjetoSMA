@@ -15,24 +15,35 @@
         .message.user .content { background-color: #005fff; color: white; border-bottom-right-radius: 4px; }
         .message.agent .content { background-color: #333; color: #f1f1f1; border-bottom-left-radius: 4px; }
         .log-message { font-family: 'Courier New', Courier, monospace; font-size: 0.8em; color: #999; margin-top: 5px; white-space: pre-wrap; }
-        #form { display: flex; padding: 20px; gap: 10px; }
-        input { flex-grow: 1; padding: 10px; border: 1px solid #444; background-color: #252525; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
-        button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; }
+        #form { display: flex; padding: 20px; gap: 10px; flex-wrap: wrap; }
+        input, select { flex-grow: 1; padding: 10px; border: 1px solid #444; background-color: #252525; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
+        button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; }
         button:hover { background-color: #005fff; }
-        select { flex-shrink: 0; padding: 10px; border: 1px solid #444; background-color: #252525; color: #e0e0e0; border-radius: 4px; font-size: 1em; }
         .input-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
         .hidden { display: none; }
-        #form { flex-wrap: wrap; }
+        /* Estilos para o card de sugestão */
+        .suggestion-card { background-color: #2c2c2c; border-left: 4px solid #f9ca24; border-radius: 4px; padding: 15px; margin: 15px 0; animation: fadeIn 0.5s ease; }
+        .suggestion-header { font-weight: bold; color: #f9ca24; margin-bottom: 10px; font-size: 1.1em; }
+        .suggestion-body p { margin: 5px 0; }
+        .suggestion-body code { background-color: #1a1a1a; padding: 2px 5px; border-radius: 3px; font-family: 'Courier New', Courier, monospace; }
+        .suggestion-actions { margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end; }
+        .suggestion-actions button { font-size: 0.9em; padding: 8px 12px; }
+        .approve-btn { background-color: #28a745; }
+        .approve-btn:hover { background-color: #218838; }
+        .decline-btn { background-color: #dc3545; }
+        .decline-btn:hover { background-color: #c82333; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div id="chat-container">
         <div id="messages"></div>
-        <form id="form">
+        <form id="form" onsubmit="return false;">
             <select id="action_select">
                 <option value="organize">Organizar Arquivos</option>
                 <option value="index">Indexar Diretório (Criar Memória)</option>
                 <option value="query">Consultar Memória</option>
+                <option value="start_watching">Monitorar Diretório (Proativo)</option>
             </select>
             
             <div id="organize_inputs" class="input-group">
@@ -48,118 +59,14 @@
                 <input id="query_input" type="text" placeholder="Sua pergunta sobre os arquivos" autocomplete="off">
             </div>
 
+            <div id="watch_inputs" class="input-group hidden">
+                <input id="dir_input_watch" type="text" placeholder="Caminho do diretório para monitorar" autocomplete="off">
+            </div>
+
             <button id="submit_button" style="width: 100%; margin-top: 10px;">Executar</button>
         </form>
     </div>
 
-    <script>
-        const messages = document.getElementById('messages');
-        const form = document.getElementById('form');
-        const actionSelect = document.getElementById('action_select');
-        
-        // Input groups
-        const organizeInputs = document.getElementById('organize_inputs');
-        const indexInputs = document.getElementById('index_inputs');
-        const queryInputs = document.getElementById('query_inputs');
-
-        // Inputs individuais
-        const dirInputOrganize = document.getElementById('dir_input_organize');
-        const goalInput = document.getElementById('goal_input');
-        const dirInputIndex = document.getElementById('dir_input_index');
-        const queryInput = document.getElementById('query_input');
-        const submitButton = document.getElementById('submit_button');
-
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-
-        function addMessageToChat(type, content, level = 'info') {
-            const messagesContainer = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', type);
-
-            const contentDiv = document.createElement('div');
-            contentDiv.classList.add('content');
-            
-            if (type === 'log') {
-                const logDiv = document.createElement('div');
-                logDiv.classList.add('log-message');
-                logDiv.textContent = content;
-                logDiv.style.color = level === 'error' ? '#ff6b6b' : (level === 'warning' ? '#f9ca24' : '#aaa');
-                messagesContainer.appendChild(logDiv);
-            } else if (type === 'query_result') {
-                 contentDiv.innerHTML = `<strong>Resposta:</strong><p>${content.answer}</p><p><small>Fontes: ${content.source_files.join(', ') || 'N/A'}</small></p>`;
-                 messageDiv.appendChild(contentDiv);
-                 messagesContainer.appendChild(messageDiv);
-            } else if (type === 'agent' && typeof content === 'object' && content.data) {
-                contentDiv.innerHTML = `<p>${content.message}</p><pre style="background-color: #2a2a2a; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;">${JSON.stringify(content.data, null, 2)}</pre>`;
-                messageDiv.appendChild(contentDiv);
-                messagesContainer.appendChild(messageDiv);
-            } else {
-                contentDiv.textContent = content;
-                messageDiv.appendChild(contentDiv);
-                messagesContainer.appendChild(messageDiv);
-            }
-            
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        }
-
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            console.log("Received data:", data);
-
-            if (data.type === 'log') {
-                addMessageToChat('log', data.message, data.level);
-            } else if (data.type === 'result') {
-                addMessageToChat('agent', {message: '✅ Operação concluída!', data: data.data});
-            } else if (data.type === 'query_result') {
-                addMessageToChat('query_result', data.data);
-            } else if (data.type === 'error') {
-                addMessageToChat('agent', `❌ Erro: ${data.message}`);
-            }
-        };
-
-        actionSelect.addEventListener('change', () => {
-            const selectedAction = actionSelect.value;
-            organizeInputs.classList.toggle('hidden', selectedAction !== 'organize');
-            indexInputs.classList.toggle('hidden', selectedAction !== 'index');
-            queryInputs.classList.toggle('hidden', selectedAction !== 'query');
-            submitButton.textContent = selectedAction === 'query' ? 'Perguntar' : 'Executar';
-        });
-
-        form.addEventListener('submit', function(event) {
-            event.preventDefault();
-            const action = actionSelect.value;
-            let payload = { action };
-            let userMessage = '';
-
-            if (action === 'organize') {
-                payload.directory = dirInputOrganize.value;
-                payload.goal = goalInput.value;
-                if (!payload.directory || !payload.goal) {
-                    alert('Por favor, preencha o caminho do diretório e o objetivo.');
-                    return;
-                }
-                userMessage = `Organizar: "${payload.directory}"\nObjetivo: "${payload.goal}"`;
-            } else if (action === 'index') {
-                payload.directory = dirInputIndex.value;
-                if (!payload.directory) {
-                    alert('Por favor, preencha o caminho do diretório.');
-                    return;
-                }
-                userMessage = `Indexar diretório: "${payload.directory}"`;
-            } else if (action === 'query') {
-                payload.query = queryInput.value;
-                if (!payload.query) {
-                    alert('Por favor, insira sua pergunta.');
-                    return;
-                }
-                userMessage = `Consultar: "${payload.query}"`;
-            }
-            
-            ws.send(JSON.stringify(payload));
-            addMessageToChat('user', userMessage);
-        });
-
-        addMessageToChat('agent', 'Olá! Sou seu agente de arquivos. Escolha uma ação, preencha os campos e clique para começar.');
-    </script>
+    <script src="/static/js/main.js"></script>
 </body>
 </html>

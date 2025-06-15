@@ -3,6 +3,7 @@ import json
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 
 from hub import hub_mcp
 from fastmcp import Client
@@ -13,6 +14,10 @@ except ImportError:
 
 # Configuração do FastAPI e dos templates
 app = FastAPI()
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 templates = Jinja2Templates(directory="templates")
 
 # Classe para lidar com os logs e enviá-los via WebSocket
@@ -35,7 +40,7 @@ class WebSocketLogHandler:
 
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_page(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -48,48 +53,119 @@ async def websocket_endpoint(websocket: WebSocket):
             payload = json.loads(data)
             
             action = payload.get("action")
-            tool_name = ""
-            tool_params = {}
+            current_tool_name_to_call = None
+            current_tool_params_to_call = {}
 
-            if action == "organize":
-                tool_name = "organize_directory"
-                tool_params = {
-                    "directory_path": payload.get("directory"),
-                    "user_goal": payload.get("goal"),
-                    "auto_approve": True
-                }
-            elif action == "index":
-                tool_name = "index_directory_for_memory"
-                tool_params = {"directory_path": payload.get("directory")}
-            elif action == "query":
-                tool_name = "query_files_in_memory"
-                tool_params = {"query": payload.get("query")}
-            else:
-                await websocket.send_json({"type": "error", "message": "Ação desconhecida."})
-                continue
-            
-            # Validação simples de input
-            if not all(tool_params.values()):
-                 await websocket.send_json({"type": "error", "message": "Todos os campos para a ação selecionada são obrigatórios."})
-                 continue
-            
             async with Client(hub_mcp, log_handler=log_handler.handle_log) as client:
+                if action == "organize":
+                    current_tool_name_to_call = "organize_directory"
+                    current_tool_params_to_call = {
+                        "directory_path": payload.get("directory"),
+                        "user_goal": payload.get("goal"),
+                        "auto_approve": True
+                    }
+                elif action == "index":
+                    current_tool_name_to_call = "index_directory_for_memory"
+                    current_tool_params_to_call = {"directory_path": payload.get("directory")}
+                elif action == "query":
+                    user_query_text = payload.get("query")
+                    if not user_query_text:
+                        await websocket.send_json({"type": "error", "message": "A consulta não pode estar vazia."})
+                        continue
+
+                    try:
+                        count_query_tool_output_parts = await client.call_tool(
+                            "query_indexed_files_count", # Tool on ExecutorAgent
+                            {"query_text": user_query_text}
+                        )
+
+                        raw_count_query_output_text = None
+                        if count_query_tool_output_parts and count_query_tool_output_parts[0] and count_query_tool_output_parts[0].text:
+                            raw_count_query_output_text = count_query_tool_output_parts[0].text
+                        
+                        if raw_count_query_output_text:
+                            count_query_final_result_data = json.loads(raw_count_query_output_text)
+                            if count_query_final_result_data.get("status") == "answered":
+                                await websocket.send_json({"type": "query_result", "data": count_query_final_result_data})
+                                await client.log(f"Query answered by query_indexed_files_count: {user_query_text}", level="info")
+                                continue # Skip semantic search, process next websocket message
+                            else:
+                                await client.log(f"query_indexed_files_count returned status '{count_query_final_result_data.get("status")}'. Proceeding to semantic search.", level="debug")
+                        else:
+                            await client.log("query_indexed_files_count returned no text output. Proceeding to semantic search.", level="warning")
+
+                    except json.JSONDecodeError as e_json_count_query:
+                        await client.log(f"JSONDecodeError from query_indexed_files_count: {e_json_count_query}. Raw: {raw_count_query_output_text if 'raw_count_query_output_text' in locals() else 'N/A'}. Proceeding to semantic search.", level="error")
+                    except Exception as e_qc:
+                        await client.log(f"Error calling query_indexed_files_count: {e_qc}. Proceeding to semantic search.", level="error")
+                    
+                    current_tool_name_to_call = "query_files_in_memory" # Semantic search tool
+                    current_tool_params_to_call = {"query": user_query_text}
+                else:
+                    await websocket.send_json({"type": "error", "message": "Ação desconhecida."})
+                    continue
+                
+                if not current_tool_name_to_call:
+                    await client.log("Internal error: Tool name not set before call attempt.", level="error")
+                    await websocket.send_json({"type": "error", "message": "Erro interno: nome da ferramenta não definido."})
+                    continue
+
+                if not all(current_tool_params_to_call.values()): # Check params for the specific tool
+                    await websocket.send_json({"type": "error", "message": f"Todos os campos para a ação '{action}' são obrigatórios."})
+                    continue
+            
                 try:
-                    result = await client.call_tool(tool_name, tool_params)
+                    tool_output_parts = await client.call_tool(current_tool_name_to_call, current_tool_params_to_call)
 
-                    if result and result[0]:
-                        final_result_text = result[0].text
+                    raw_tool_output_text = None
+                    if tool_output_parts and tool_output_parts[0] and tool_output_parts[0].text:
+                        raw_tool_output_text = tool_output_parts[0].text
+                    
+                    final_result_data = {}
+                    if raw_tool_output_text:
+                        try:
+                            final_result_data = json.loads(raw_tool_output_text)
+                        except json.JSONDecodeError:
+                            final_result_data = {
+                                "status": "error", 
+                                "details": "A resposta da ferramenta não é um JSON válido.",
+                                "raw_output": raw_tool_output_text
+                            }
                     else:
-                        final_result_text = '{"status": "error", "details": "A ferramenta não retornou resultado."}'
+                        final_result_data = {
+                            "status": "error", 
+                            "details": "A ferramenta não retornou resultado ou o resultado está vazio."
+                        }
                     
-                    final_result_text = result[0].text if result and not result[0].isError else '{"status": "error", "details": "Nenhum resultado retornado."}'
-                    final_result = json.loads(final_result_text)
-                    
-                    result_type = "query_result" if action == "query" else "result"
-                    await websocket.send_json({"type": result_type, "data": final_result})
+                    if action == "index" and final_result_data.get("status") == "success":
+                        indexed_count = final_result_data.get("indexed_files") # Assuming this key exists in the response
+                        if isinstance(indexed_count, int):
+                            try:
+                                await client.call_tool(
+                                    "update_indexed_files_count", # Tool on ExecutorAgent
+                                    {"count": indexed_count}
+                                )
+                                await client.log(f"Successfully called update_indexed_files_count with {indexed_count} files.", level="info")
+                            except Exception as e_update_count:
+                                await client.log(f"Error calling update_indexed_files_count: {e_update_count}", level="error")
+                        elif indexed_count is not None:
+                            await client.log(f"'indexed_files' value '{indexed_count}' from '{current_tool_name_to_call}' is not an integer. Cannot update count.", level="warning")
+                        else:
+                            await client.log(f"'indexed_files' key not found or null in response from '{current_tool_name_to_call}'. Cannot update count.", level="warning")
 
-                except Exception as e:
-                    await websocket.send_json({"type": "error", "message": f"Ocorreu um erro: {str(e)}"})
+                    result_type = "query_result" if action == "query" and current_tool_name_to_call == "query_files_in_memory" else "result"
+                    if action == "query" and current_tool_name_to_call == "query_files_in_memory":
+                         result_type = "query_result"
+                    elif action == "query": # Query was answered by count tool, already sent and continued.
+                        pass # Should not reach here due to 'continue' above
+                    else:
+                        result_type = "result"
+
+                    await websocket.send_json({"type": result_type, "data": final_result_data})
+
+                except Exception as e_tool_call:
+                    await client.log(f"Error calling tool {current_tool_name_to_call}: {str(e_tool_call)}", level="error")
+                    await websocket.send_json({"type": "error", "message": f"Ocorreu um erro ao executar a ação: {str(e_tool_call)}"})
 
     except WebSocketDisconnect:
         print("Cliente desconectado.")

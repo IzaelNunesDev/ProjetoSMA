@@ -47,7 +47,7 @@ Siga os passos abaixo para configurar e executar o projeto.
 Para iniciar a aplicação com a interface web, execute o seguinte comando no terminal, a partir da pasta `file-organizer`:
 
 ```bash
-uvicorn web_ui:app --reload
+python main.py serve
 ```
 
 Isso iniciará um servidor local. Abra seu navegador e acesse [http://127.0.0.1:8000](http://127.0.0.1:8000).
