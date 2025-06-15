@@ -1,0 +1,7 @@
+{
+  "name": "File Move Suggester",
+  "description": "Analisa um novo arquivo e informações de arquivos similares para sugerir um local para movê-lo.",
+  "version": "1.0",
+  "template_file": "template.md",
+  "input_variables": ["target_file_metadata", "similar_files_info"]
+}

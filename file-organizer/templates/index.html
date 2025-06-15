@@ -44,6 +44,7 @@
                 <option value="index">Indexar Diretório (Criar Memória)</option>
                 <option value="query">Consultar Memória</option>
                 <option value="start_watching">Monitorar Diretório (Proativo)</option>
+                <option value="maintenance">Manutenção</option>
             </select>
             
             <div id="organize_inputs" class="input-group">
@@ -61,6 +62,14 @@
 
             <div id="watch_inputs" class="input-group hidden">
                 <input id="dir_input_watch" type="text" placeholder="Caminho do diretório para monitorar" autocomplete="off">
+            </div>
+
+            <div id="maintenance_inputs" class="input-group hidden">
+                <select id="maintenance_action_select">
+                    <option value="find_empty_folders">Encontrar Pastas Vazias</option>
+                    <!-- Outras ações de manutenção virão aqui -->
+                </select>
+                <input id="dir_input_maintenance" type="text" placeholder="Caminho do diretório para verificar" autocomplete="off">
             </div>
 
             <button id="submit_button" style="width: 100%; margin-top: 10px;">Executar</button>

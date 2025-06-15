@@ -7,14 +7,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const organizeInputs = document.getElementById('organize_inputs');
     const indexInputs = document.getElementById('index_inputs');
     const queryInputs = document.getElementById('query_inputs');
-    const watchInputs = document.getElementById('watch_inputs'); // Novo
+    const watchInputs = document.getElementById('watch_inputs');
+    const maintenanceInputs = document.getElementById('maintenance_inputs');
 
     // Inputs individuais
     const dirInputOrganize = document.getElementById('dir_input_organize');
     const goalInput = document.getElementById('goal_input');
     const dirInputIndex = document.getElementById('dir_input_index');
     const queryInput = document.getElementById('query_input');
-    const dirInputWatch = document.getElementById('dir_input_watch'); // Novo
+    const dirInputWatch = document.getElementById('dir_input_watch');
+    const maintenanceActionSelect = document.getElementById('maintenance_action_select');
+    const dirInputMaintenance = document.getElementById('dir_input_maintenance');
     const submitButton = document.getElementById('submit_button');
 
     let watchedDirectory = ''; // Armazena o diretório monitorado
@@ -52,44 +55,43 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    function displaySuggestion(suggestion) {
-        const suggestionId = `suggestion-${Date.now()}`;
-        const card = document.createElement('div');
-        card.classList.add('suggestion-card');
-        card.id = suggestionId;
+function displaySuggestion(suggestion) {
+    const suggestionId = `suggestion-${Date.now()}`;
+    const card = document.createElement('div');
+    card.classList.add('suggestion-card');
+    card.id = suggestionId;
 
-        card.innerHTML = `
-            <div class="suggestion-header">✨ Nova Sugestão de Organização</div>
-            <div class="suggestion-body">
-                <p><strong>Motivo:</strong> ${suggestion.reason}</p>
-                <p><strong>Mover de:</strong> <code>${suggestion.from}</code></p>
-                <p><strong>Para:</strong> <code>${suggestion.to}</code></p>
-            </div>
-            <div class="suggestion-actions">
-                <button class="approve-btn">Aprovar</button>
-                <button class="decline-btn">Recusar</button>
-            </div>
-        `;
+    card.innerHTML = `
+        <div class="suggestion-header">✨ Nova Sugestão de Organização</div>
+        <div class="suggestion-body">
+            <p><strong>Motivo:</strong> ${suggestion.reason}</p>
+            <p><strong>Mover de:</strong> <code>${suggestion.from}</code></p>
+            <p><strong>Para:</strong> <code>${suggestion.to}</code></p>
+        </div>
+        <div class="suggestion-actions">
+            <button class="approve-btn">Aprovar</button>
+            <button class="decline-btn">Recusar</button>
+        </div>
+    `;
 
-        messages.appendChild(card);
-        messages.scrollTop = messages.scrollHeight;
+    messages.appendChild(card);
+    messages.scrollTop = messages.scrollHeight;
 
-        card.querySelector('.approve-btn').addEventListener('click', () => {
-            const payload = {
-                action: 'execute_action',
-                suggestion: suggestion, // A sugestão completa
-                directory: watchedDirectory // O diretório raiz que está sendo observado
-            };
-            ws.send(JSON.stringify(payload));
-            addMessageToChat('user', `Aprovada sugestão para mover ${suggestion.from.split('\\').pop()}.`);
-            card.remove();
-        });
+    card.querySelector('.approve-btn').addEventListener('click', () => {
+        // Envia a aprovação de volta para o servidor
+        ws.send(JSON.stringify({
+            action: 'approve_suggestion',
+            suggestion: suggestion 
+        }));
+        addMessageToChat('user', `Aprovada sugestão para mover ${suggestion.from.split('\\').pop()}.`);
+        card.remove();
+    });
 
-        card.querySelector('.decline-btn').addEventListener('click', () => {
-            addMessageToChat('user', `Recusada sugestão para ${suggestion.from.split('\\').pop()}.`);
-            card.remove();
-        });
-    }
+    card.querySelector('.decline-btn').addEventListener('click', () => {
+        addMessageToChat('user', `Recusada sugestão para ${suggestion.from.split('\\').pop()}.`);
+        card.remove();
+    });
+}
 
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
@@ -113,11 +115,13 @@ document.addEventListener('DOMContentLoaded', () => {
         organizeInputs.classList.toggle('hidden', selectedAction !== 'organize');
         indexInputs.classList.toggle('hidden', selectedAction !== 'index');
         queryInputs.classList.toggle('hidden', selectedAction !== 'query');
-        watchInputs.classList.toggle('hidden', selectedAction !== 'start_watching'); // Novo
+        watchInputs.classList.toggle('hidden', selectedAction !== 'start_watching');
+        maintenanceInputs.classList.toggle('hidden', selectedAction !== 'maintenance');
         
         let buttonText = 'Executar';
         if (selectedAction === 'query') buttonText = 'Perguntar';
-        if (selectedAction === 'start_watching') buttonText = 'Iniciar Monitoramento'; // Novo
+        if (selectedAction === 'start_watching') buttonText = 'Iniciar Monitoramento';
+        if (selectedAction === 'maintenance') buttonText = 'Executar Manutenção';
         submitButton.textContent = buttonText;
     });
 
@@ -157,6 +161,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             watchedDirectory = payload.directory; // Armazena o diretório
             userMessage = `Iniciar monitoramento em: "${payload.directory}"`;
+        } else if (action === 'maintenance') {
+            payload.sub_action = maintenanceActionSelect.value;
+            payload.directory = dirInputMaintenance.value;
+            if (!payload.directory) {
+                alert('Por favor, preencha o caminho do diretório para a manutenção.');
+                return;
+            }
+            userMessage = `Manutenção: ${maintenanceActionSelect.options[maintenanceActionSelect.selectedIndex].text} em "${payload.directory}"`;
         }
         
         ws.send(JSON.stringify(payload));

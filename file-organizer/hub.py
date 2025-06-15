@@ -11,6 +11,7 @@ from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
 from agents.watcher_agent import suggest_organization_for_file as suggest_organization_for_file_func, execute_planned_action as execute_planned_action_func
 from agents.memory_agent import index_directory, query_memory
+from agents.maintenance_agent import find_empty_folders
 
 
 console = Console()
@@ -95,6 +96,8 @@ async def organize_directory(
         await ctx.log(error_message, level="error")
         console.print_exception()
         return {"status": "error", "details": error_message}
+
+hub_mcp.add_tool(find_empty_folders)
 
 @hub_mcp.tool
 async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:
