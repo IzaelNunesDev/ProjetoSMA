@@ -37,6 +37,53 @@ async def create_organization_plan(files_metadata: list[dict], user_goal: str, c
         await ctx.log(error_message, level="error")
         raise ValueError(error_message)
 
+
+@mcp.tool
+async def suggest_organization_for_file(file_path: str, ctx: Context) -> dict:
+    """Sugere um plano de organização para um único arquivo detectado."""
+    await ctx.log(f"PlannerAgent: Sugerindo organização para: {file_path}", level="info")
+    try:
+        p_file_path = Path(file_path)
+        if not p_file_path.exists() or not p_file_path.is_file():
+            msg = f"Arquivo não encontrado ou não é um arquivo válido: {file_path}"
+            await ctx.log(msg, level="error")
+            return {"status": "error", "details": msg, "plan": []}
+
+        # Criar metadados básicos para o arquivo único
+        file_metadata = {
+            "name": p_file_path.name,
+            "path": str(p_file_path),
+            "size": p_file_path.stat().st_size,
+            "extension": p_file_path.suffix.lower(),
+            "type": "file",
+            "last_modified": p_file_path.stat().st_mtime
+        }
+        files_metadata_list = [file_metadata]
+
+        # Usar um objetivo genérico para o planejador.
+        user_goal = "Organizar este novo arquivo na estrutura de pastas existente ou em uma nova apropriada."
+
+        await ctx.log(f"PlannerAgent: Chamando create_organization_plan para: {p_file_path.name}", level="debug")
+        # Chama a função local create_organization_plan diretamente
+        plan = await create_organization_plan(
+            files_metadata=files_metadata_list, 
+            user_goal=user_goal, 
+            ctx=ctx
+        )
+
+        if not plan or not isinstance(plan, list):
+            msg = "O agente de planejamento retornou um plano inválido para o arquivo."
+            await ctx.log(msg, level="warning")
+            return {"status": "success", "details": msg, "plan": []} # Retorna sucesso, mas plano vazio
+
+        await ctx.log(f"PlannerAgent: Plano recebido para '{p_file_path.name}': {plan}", level="info")
+        return {"status": "success", "plan": plan}
+
+    except Exception as e:
+        error_message = f"PlannerAgent: Erro ao sugerir organização para {file_path}: {e}"
+        await ctx.log(error_message, level="error")
+        return {"status": "error", "details": error_message, "plan": []}
+
     try:
         response = await model.generate_content_async(prompt)
         await ctx.log("📝 Resposta da IA recebida, processando o plano...", level="info")

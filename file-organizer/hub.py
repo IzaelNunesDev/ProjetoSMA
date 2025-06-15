@@ -10,6 +10,9 @@ from agents.scanner_agent import scan_directory
 from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
 from agents.watcher_agent import suggest_organization_for_file as suggest_organization_for_file_func, execute_planned_action as execute_planned_action_func
+# --- NOVA IMPORTAÇÃO PARA CORRIGIR BUG CRÍTICO ---
+from agents.suggestion_agent import suggest_file_move
+# -------------------------------------------------
 # --- NOVAS IMPORTAÇÕES DO HIVE MIND ---
 from agents.memory_agent import index_directory, query_memory, post_memory_experience, get_feed_for_agent
 # ------------------------------------
@@ -58,11 +61,10 @@ async def organize_directory(
         plan_details = "\n".join([f"  - {a.get('action', 'AÇÃO INDEFINIDA')}: {a.get('path') or a.get('from', 'N/A')}" for a in plan])
         await ctx.log(plan_details, level="info")
 
-        # 3. Confirmar (Lógica CLI, pulada na UI se auto_approve=True)
-        if not auto_approve:
-            if not Confirm.ask("\n[bold yellow]Você aprova este plano?[/]"):
-                await ctx.log("❌ Organização cancelada pelo usuário.", level="warning")
-                return {"status": "cancelled"}
+        # 3. Confirmação de Execução (agora gerenciada pela UI antes de chamar esta função)
+        # Se auto_approve for False, presume-se que a UI já obteve confirmação.
+        # Se auto_approve for True, o plano será executado diretamente.
+        # O hub não realiza mais a confirmação interativa para aprovação do plano.
 
         # 4. Executar
         await ctx.log("\n🚀 Executando o plano...", level="info")
@@ -86,8 +88,8 @@ async def organize_directory(
 
             if result.get("status") == "error":
                 await ctx.log(f"❌ Falha na ação: {result.get('details')}", level="error")
-                if not auto_approve and not Confirm.ask("[bold yellow]Continuar com as próximas ações?[/]"):
-                    await ctx.log("🛑 Execução interrompida.", level="warning")
+                if not auto_approve:
+                    await ctx.log("🛑 Execução interrompida devido a erro e auto_approve=False. A UI deve gerenciar a continuação, se desejado.", level="warning")
                     break
         
         await ctx.log("\n✨ Organização finalizada! ✨", level="info")
@@ -102,6 +104,8 @@ async def organize_directory(
 hub_mcp.add_tool(find_empty_folders)
 hub_mcp.add_tool(post_memory_experience)
 hub_mcp.add_tool(get_feed_for_agent)
+# Adiciona a ferramenta correta para sugestão de movimento de arquivo
+hub_mcp.add_tool(suggest_file_move)
 
 @hub_mcp.tool
 async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:

@@ -37,10 +37,16 @@ Siga os passos abaixo para configurar e executar o projeto.
    pip install -r requirements.txt
     ```
 
-4.  Configure as variáveis de ambiente. Crie um arquivo `.env` na raiz da pasta `file-organizer` e adicione sua chave da API do Google Gemini:
+4.  Configure as variáveis de ambiente. Copie o arquivo `.env.example` para um novo arquivo chamado `.env` na raiz da pasta `file-organizer`.
+    ```bash
+    cp .env.example .env
     ```
-    GEMINI_API_KEY=SUA_CHAVE_API_AQUI
+    Em seguida, edite o arquivo `.env` e adicione sua chave da API do Google Gemini (ou outras chaves necessárias):
     ```
+    # .env
+    GEMINI_API_KEY="SUA_CHAVE_API_REAL_AQUI"
+    ```
+    **IMPORTANTE**: O arquivo `.env` contém informações sensíveis e está incluído no `.gitignore` para não ser enviado ao seu repositório Git. Nunca comite suas chaves de API!
 
 ### 3. Execução
 
@@ -49,6 +55,13 @@ Para iniciar a aplicação com a interface web, execute o seguinte comando no te
 ```bash
 python main.py serve
 ```
+
+Se preferir usar a interface de linha de comando (CLI) para uma organização direta sem a UI web, você pode usar:
+
+```bash
+python main.py organize --directory "/caminho/para/seu/diretorio" --goal "Seu objetivo de organização"
+```
+Substitua `/caminho/para/seu/diretorio` pelo caminho absoluto do diretório que deseja organizar e `"Seu objetivo de organização"` pela descrição do que você quer fazer.
 
 Isso iniciará um servidor local. Abra seu navegador e acesse [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
@@ -62,14 +75,16 @@ Os logs do processo de organização serão exibidos em tempo real na tela.
 
 ## Estrutura do Projeto
 
--   `main_orchestrator.py`: Script principal para execução via linha de comando (CLI).
--   `web_ui.py`: Contém a lógica do servidor web (FastAPI) e a interface com o usuário.
--   `hub.py`: O hub central que orquestra os agentes e expõe a ferramenta `organize_directory`.
+-   `main.py`: Ponto de entrada principal da aplicação. Gerencia tanto a interface web (via `typer` e FastAPI) quanto a execução via linha de comando (CLI).
+-   `web_ui.py`: Contém a lógica do servidor web (FastAPI) e a interface com o usuário para a funcionalidade web.
+-   `hub.py`: O hub central (FastMCP) que orquestra os agentes e expõe as ferramentas como `organize_directory`.
 -   `agents/`: Contém os diferentes agentes:
     -   `scanner_agent.py`: Responsável por analisar os arquivos.
     -   `planner_agent.py`: Responsável por criar o plano de organização.
     -   `executor_agent.py`: Responsável por executar as ações no sistema de arquivos.
 -   `templates/index.html`: O arquivo HTML para a interface web.
 -   `requirements.txt`: Lista de dependências do Python.
--   `.env`: Arquivo para armazenar as chaves de API.
+-   `.env`: Arquivo para armazenar as chaves de API (ignorado pelo Git).
+-   `.env.example`: Arquivo de exemplo para as variáveis de ambiente.
+-   `.gitignore`: Especifica arquivos e pastas a serem ignorados pelo Git.
  

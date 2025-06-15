@@ -1,46 +1,16 @@
 # agents/watcher_agent.py
-import time
-import asyncio
 from pathlib import Path
-from threading import Thread
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from fastmcp import FastMCP, Context
 from .planner_agent import create_organization_plan
 from .executor_agent import create_folder, move_file, move_folder
 
 watcher_mcp = FastMCP(name="WatcherAgent") # Initialize MCP for watcher agent
 
-class WatcherEventHandler(FileSystemEventHandler):
-    """Lida com eventos do sistema de arquivos e os coloca em uma fila assíncrona."""
-    def __init__(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
-        self.queue = queue
-        self.loop = loop
+# As ferramentas abaixo são usadas pelo hub.py e são mantidas.
+# A lógica de Watchdog (EventHandler, start_watcher) foi removida pois era redundante
+# com a implementação em watcher.py (nível raiz do projeto).
 
-    def on_created(self, event):
-        """Chamado quando um arquivo ou diretório é criado."""
-        if not event.is_directory:
-            print(f"Arquivo detectado: {event.src_path}")
-            # Coloca o evento na fila do loop de eventos principal do asyncio
-            self.loop.call_soon_threadsafe(self.queue.put_nowait, event.src_path)
-
-def start_watcher(directory_path: str, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> Observer:
-    """Cria e inicia um observador de sistema de arquivos em uma thread separada."""
-    path = Path(directory_path).expanduser().resolve()
-    if not path.is_dir():
-        raise ValueError(f"O caminho fornecido não é um diretório válido: {path}")
-
-    event_handler = WatcherEventHandler(queue, loop)
-    observer = Observer()
-    observer.schedule(event_handler, str(path), recursive=False) # Não recursivo por padrão
-
-    # Executa o observador em uma thread para não bloquear a aplicação principal
-    thread = Thread(target=observer.start, daemon=True)
-    thread.start()
-    print(f"👁️  Monitorando o diretório '{path}'...")
-    return observer
-
-# NEW TOOLS
+# TOOLS PREVIOUSLY REFERRED TO AS "NEW TOOLS"
 @watcher_mcp.tool
 async def suggest_organization_for_file(file_path: str, ctx: Context) -> dict:
     """Sugere um plano de organização para um único arquivo detectado."""

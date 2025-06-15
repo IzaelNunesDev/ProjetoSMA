@@ -1,0 +1,16 @@
+# Arquivos de ambiente - NUNCA comitar o .env real!
+.env
+
+# Pasta de ambiente virtual
+venv/
+
+# Arquivos de cache Python
+__pycache__/
+*.pyc
+
+# Arquivos de configuração do VSCode
+.vscode/
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
