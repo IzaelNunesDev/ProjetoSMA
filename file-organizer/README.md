@@ -1,65 +1,135 @@
-Organizador de Arquivos com IA
-Este projeto utiliza uma arquitetura baseada em agentes de IA para organizar arquivos em um diretório com base em um objetivo definido pelo usuário. A interação pode ser feita através de uma interface web.
-Funcionalidades
-Análise de Diretório: Um agente scanner analisa o conteúdo do diretório especificado e extrai metadados dos arquivos.
-Planejamento Inteligente: Um agente planner recebe os metadados e o objetivo do usuário para criar um plano de organização (ex: criar pastas, mover arquivos).
-Execução Segura: Um agente executor executa o plano aprovado, realizando as operações no sistema de arquivos.
-Monitoramento Proativo: Um watcher monitora um diretório e, ao detectar um novo arquivo, usa um suggestion_agent para propor uma ação de organização baseada na memória do sistema.
-Interface Web: Uma interface web permite que o usuário inicie o processo de organização de forma interativa, visualizando os logs em tempo real e aprovando sugestões.
-Como Instalar e Executar
-Siga os passos abaixo para configurar e executar o projeto.
-1. Pré-requisitos
-Python 3.9 ou superior
-Git
-2. Instalação
-Clone o repositório:
+# Organizador de Arquivos com IA
+
+Este projeto utiliza uma arquitetura moderna com agentes de IA para organizar arquivos em um diretório com base em um objetivo definido pelo usuário. A interação é feita através de uma interface web reativa construída com React, que se comunica em tempo real com um backend Python (FastAPI).
+
+## Arquitetura
+
+A aplicação é dividida em duas partes principais: um backend responsável pela lógica de IA e um frontend para a interação com o usuário.
+
+-   **Backend (Python + FastAPI):**
+    -   Serve uma API e um endpoint WebSocket para comunicação em tempo real.
+    -   **Agentes de IA:**
+        -   `ScannerAgent`: Analisa o conteúdo do diretório e extrai metadados.
+        -   `PlannerAgent`: Cria um plano de organização com base no objetivo do usuário.
+        -   `ExecutorAgent`: Executa o plano de forma segura.
+        -   `SuggestionAgent`: Monitora um diretório e sugere ações de organização para novos arquivos.
+    -   **Hub:** Orquestra a comunicação entre os agentes e o frontend.
+
+-   **Frontend (React + TypeScript):**
+    -   Interface de usuário moderna e reativa construída com Vite, React e Tailwind CSS.
+    -   Recebe atualizações em tempo real do backend via WebSocket para exibir logs, status e sugestões.
+    -   Permite ao usuário definir o diretório, o objetivo, aprovar planos e interagir com o sistema de forma intuitiva.
+
+## Como Instalar e Executar
+
+Siga os passos abaixo para configurar e executar o projeto em seu ambiente local.
+
+### 1. Pré-requisitos
+
+-   Python 3.9 ou superior
+-   Node.js (v18 ou superior) e npm
+-   Git
+
+### 2. Instalação
+
+**a. Clone o repositório:**
+
+```bash
 git clone <URL_DO_SEU_REPOSITORIO>
 cd izaelnunesdev-projetosma/file-organizer
-Use code with caution.
-Bash
-Crie e ative um ambiente virtual:
-python -m venv venv
-source venv/bin/activate  # No Linux/macOS
-# ou
-.\venv\Scripts\activate  # No Windows
-Use code with caution.
-Bash
-Instale as dependências:
-pip install -r requirements.txt
-Use code with caution.
-Bash
-Configure as variáveis de ambiente. Copie o arquivo .env.example para um novo arquivo chamado .env.
-cp .env.example .env
-Use code with caution.
-Bash
-Em seguida, edite o arquivo .env e adicione sua chave da API do Google Gemini.
-# .env
-GEMINI_API_KEY="SUA_CHAVE_API_REAL_AQUI"
-Use code with caution.
-IMPORTANTE: O arquivo .env contém informações sensíveis e já está no .gitignore para não ser enviado ao seu repositório Git. Nunca comite suas chaves de API! Se você clonou o repositório com uma chave exposta, revogue-a imediatamente no seu painel do Google Cloud.
-3. Execução
-Para iniciar a aplicação com a interface web, execute o seguinte comando no terminal, a partir da pasta file-organizer:
+```
+
+**b. Configure o Backend:**
+
+1.  Navegue até a pasta do backend:
+    ```bash
+    cd backend
+    ```
+2.  Crie e ative um ambiente virtual:
+    ```bash
+    python -m venv venv
+    # No Windows
+    .\venv\Scripts\activate
+    # No Linux/macOS
+    source venv/bin/activate
+    ```
+3.  Instale as dependências do Python:
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  Configure suas credenciais. Copie o arquivo `.env.example` para `.env` e adicione sua chave da API do Google Gemini:
+    ```bash
+    cp .env.example .env
+    # Edite o arquivo .env e adicione sua chave
+    # GEMINI_API_KEY="SUA_CHAVE_API_REAL_AQUI"
+    ```
+    > **IMPORTANTE:** O arquivo `.env` já está no `.gitignore`. Nunca comite suas chaves de API.
+
+**c. Configure o Frontend:**
+
+1.  Navegue até a pasta do frontend (a partir da raiz `file-organizer`):
+    ```bash
+    cd ../frontend
+    ```
+2.  Instale as dependências do Node.js:
+    ```bash
+    npm install
+    ```
+
+### 3. Execução
+
+Para rodar a aplicação, você precisará de dois terminais.
+
+**a. Terminal 1: Iniciar o Backend**
+
+```bash
+# Navegue até a pasta do backend
+cd file-organizer/backend
+
+# Ative o ambiente virtual (se não estiver ativo)
+.\venv\Scripts\activate
+
+# Inicie o servidor FastAPI
 python main.py
-Use code with caution.
-Bash
-Isso iniciará um servidor local. Abra seu navegador e acesse http://127.0.0.1:8000.
-Na interface, você poderá:
-Fornecer o caminho absoluto para o diretório que deseja organizar.
-Descrever o objetivo da organização.
-Indexar um diretório para criar uma memória.
-Consultar a memória com perguntas em linguagem natural.
-Iniciar o monitoramento proativo de um diretório.
-Clicar no botão de ação para executar a tarefa selecionada.
-Os logs do processo de organização serão exibidos em tempo real na tela.
-Estrutura do Projeto
-main.py: Ponto de entrada que inicia o servidor web.
-web_ui.py: Contém a lógica do servidor web (FastAPI) e a interface com o usuário.
-hub.py: O hub central que orquestra os agentes e expõe as ferramentas como organize_directory e suggest_file_move.
-agents/: Contém os diferentes agentes (scanner, planner, executor, memory, suggestion).
-prompts/: Diretório para gerenciamento de templates de prompts.
-watcher.py: Módulo que implementa o monitoramento de diretórios em segundo plano.
-templates/: Contém os arquivos HTML para a interface web.
-requirements.txt: Lista de dependências do Python.
-.env: Arquivo para armazenar as chaves de API (ignorado pelo Git).
-.env.example: Arquivo de exemplo para as variáveis de ambiente.
-.gitignore: Especifica arquivos e pastas a serem ignorados pelo Git.
+```
+O backend estará rodando e aguardando conexões na porta 8000.
+
+**b. Terminal 2: Iniciar o Frontend**
+
+```bash
+# Navegue até a pasta do frontend
+cd file-organizer/frontend
+
+# Inicie o servidor de desenvolvimento do Vite
+npm run dev
+```
+
+**c. Acesse a Aplicação**
+
+Abra seu navegador e acesse **[http://localhost:8080](http://localhost:8080)**.
+
+## Estrutura do Projeto
+
+```
+file-organizer/
+├── backend/
+│   ├── agents/         # Módulos dos agentes de IA
+│   ├── prompts/        # Templates de prompts para a IA
+│   ├── .env.example    # Exemplo de arquivo de ambiente
+│   ├── hub.py          # Orquestrador central dos agentes
+│   ├── main.py         # Ponto de entrada do servidor FastAPI
+│   ├── requirements.txt# Dependências do Python
+│   └── watcher.py      # Monitoramento de diretórios
+│
+└── frontend/
+    ├── public/         # Arquivos estáticos
+    ├── src/
+    │   ├── assets/     # Imagens e outros assets
+    │   ├── components/ # Componentes React reutilizáveis
+    │   ├── hooks/      # Hooks customizados (ex: useWebSocket)
+    │   ├── pages/      # Páginas da aplicação
+    │   ├── App.tsx     # Componente principal da aplicação
+    │   └── main.tsx    # Ponto de entrada do React
+    ├── package.json    # Dependências e scripts do Node.js
+    └── vite.config.ts  # Configuração do Vite
+```

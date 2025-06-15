@@ -1,70 +1,72 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CardSection } from "@/components/ui/CardSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Folder, FileText, Search, Trash2, Calendar, Filter } from "lucide-react";
+import { Folder, FileText, Search, Trash2, Calendar, Info } from "lucide-react";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
-const historyData = [
-  {
-    id: 1,
-    action: "Directory Organization",
-    path: "/Users/john/Downloads",
-    timestamp: "2024-06-15 14:30:22",
-    status: "Completed",
-    details: "Organized 156 files into 8 categories",
-    agent: "organize_agent"
-  },
-  {
-    id: 2,
-    action: "File Indexing",
-    path: "/Users/john/Documents/Projects",
-    timestamp: "2024-06-15 13:15:45",
-    status: "Completed",
-    details: "Indexed 89 documents, created 247 memory entries",
-    agent: "scanner_agent"
-  },
-  {
-    id: 3,
-    action: "Duplicate Detection",
-    path: "/Users/john/Photos",
-    timestamp: "2024-06-15 12:00:13",
-    status: "Completed",
-    details: "Found and flagged 23 duplicate images",
-    agent: "suggest_agent"
-  },
-  {
-    id: 4,
-    action: "Memory Query",
-    path: "Global Search",
-    timestamp: "2024-06-15 11:45:30",
-    status: "Completed",
-    details: "Retrieved 15 files matching 'quarterly report 2024'",
-    agent: "query_agent"
-  },
-  {
-    id: 5,
-    action: "System Maintenance",
-    path: "System Wide",
-    timestamp: "2024-06-15 09:00:00",
-    status: "Failed",
-    details: "Cache cleanup interrupted - insufficient permissions",
-    agent: "maintenance_agent"
-  }
-];
+interface HistoryItem {
+  id: string;
+  action: string;
+  path: string;
+  timestamp: string;
+  status: string;
+  details: string;
+  agent: string;
+}
 
 export default function History() {
+  const { messages } = useWebSocket();
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
 
-  const filteredHistory = historyData.filter(item => {
+  useEffect(() => {
+    const processedHistory = messages
+      .filter(msg => msg.type === 'result' || msg.type === 'log')
+      .map((msg, index) => {
+        const timestamp = new Date(msg.timestamp).toLocaleString('pt-BR');
+        let item: HistoryItem | null = null;
+
+        if (msg.type === 'result') {
+          item = {
+            id: `msg-result-${msg.timestamp}-${index}`,
+            action: msg.data.action || 'Task Result',
+            path: msg.data.path || 'Not specified',
+            timestamp,
+            status: msg.data.status || 'Completed',
+            details: msg.data.details || JSON.stringify(msg.data),
+            agent: msg.data.agent || 'System',
+          };
+        } else if (msg.type === 'log' && msg.data.message) {
+          item = {
+            id: `msg-log-${msg.timestamp}-${index}`,
+            action: `Log: ${msg.data.agent || 'System'}`,
+            path: 'Operation Step',
+            timestamp,
+            status: 'Info',
+            details: msg.data.message,
+            agent: msg.data.agent || 'System',
+          };
+        }
+        return item;
+      })
+      .filter((item): item is HistoryItem => item !== null)
+      .reverse(); // Show newest first
+
+    setHistory(processedHistory);
+  }, [messages]);
+
+  const filteredHistory = history.filter(item => {
     const matchesSearch = item.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.details.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesFilter = selectedFilter === "all" || 
                          (selectedFilter === "completed" && item.status === "Completed") ||
-                         (selectedFilter === "failed" && item.status === "Failed");
+                         (selectedFilter === "failed" && item.status === "Failed") ||
+                         (selectedFilter === "info" && item.status === "Info");
     
     return matchesSearch && matchesFilter;
   });
@@ -73,14 +75,17 @@ export default function History() {
     switch (status) {
       case "Completed": return "bg-green-600/20 text-green-300";
       case "Failed": return "bg-red-600/20 text-red-300";
+      case "Info": return "bg-sky-600/20 text-sky-300";
       default: return "bg-slate-600/20 text-slate-300";
     }
   };
 
   const getActionIcon = (action: string) => {
-    if (action.includes("Organization")) return <Folder className="w-4 h-4" />;
-    if (action.includes("Indexing")) return <FileText className="w-4 h-4" />;
-    if (action.includes("Query")) return <Search className="w-4 h-4" />;
+    const lowerCaseAction = action.toLowerCase();
+    if (lowerCaseAction.includes("organize")) return <Folder className="w-4 h-4" />;
+    if (lowerCaseAction.includes("index")) return <FileText className="w-4 h-4" />;
+    if (lowerCaseAction.includes("query")) return <Search className="w-4 h-4" />;
+    if (lowerCaseAction.includes("log")) return <Info className="w-4 h-4" />;
     return <Calendar className="w-4 h-4" />;
   };
 
@@ -129,6 +134,14 @@ export default function History() {
               className="bg-slate-700 border-slate-600"
             >
               Failed
+            </Button>
+             <Button
+              variant={selectedFilter === "info" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedFilter("info")}
+              className="bg-slate-700 border-slate-600"
+            >
+              Info
             </Button>
           </div>
         </div>

@@ -36,12 +36,12 @@ Sua resposta deve ser **APENAS** um bloco de c√≥digo JSON contendo a lista de a√
 [
   {{
     "action": "CREATE_FOLDER",
-    "path": "C:\\Users\\Izael\\Downloads\\Documentos"
+    "path": "{root_directory}\\Documentos"
   }},
   {{
     "action": "MOVE_FILE",
-    "from": "C:\\Users\\Izael\\Downloads\\relatorio.pdf",
-    "to": "C:\\Users\\Izael\\Downloads\\Documentos\\relatorio.pdf"
+    "from": "{root_directory}\\relatorio.pdf",
+    "to": "{root_directory}\\Documentos\\relatorio.pdf"
   }}
 ]
 ```

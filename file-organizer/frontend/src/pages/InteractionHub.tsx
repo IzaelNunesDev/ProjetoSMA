@@ -10,71 +10,21 @@ import { useWebSocket } from "@/hooks/useWebSocket"; // <-- Importar o hook
 // REMOVA OS DADOS ESTÁTICOS 'initialLog' e 'plan'
 
 export default function InteractionHub() {
-  const { messages, sendMessage } = useWebSocket(); // <-- Usar o contexto
+  const { messages, sendMessage } = useWebSocket();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
 
-  // Função para lidar com o envio de comandos do ActionComposer
-  function handleComposer({ action, directory, goal, query }: { action: string, directory?: string, goal?: string, query?: string }) {
-    let payload: any = { action };
-    let userMessage = "";
-
-    if (action === 'organize') {
-        payload = { ...payload, directory, goal };
-        userMessage = `Organizar: "${directory}" com o objetivo: "${goal}"`;
-    } else if (action === 'index') {
-        payload = { ...payload, directory };
-        userMessage = `Indexar: "${directory}"`;
-    } else if (action === 'query') {
-        payload = { ...payload, query };
-        userMessage = `Consultar: "${query}"`;
-    }
-    // Adicione a lógica para 'maintenance' e 'start_watching' aqui
-    
-    // Envia a mensagem para o backend
-    sendMessage(payload);
-  }
-
-  // Novo componente para o ActionComposer que lida com múltiplos inputs
-  const DynamicActionComposer = () => {
-      const [action, setAction] = React.useState('organize');
-      const [directory, setDirectory] = React.useState('');
-      const [goal, setGoal] = React.useState('');
-      const [query, setQuery] = React.useState('');
-
-      const handleSubmit = (e: React.FormEvent) => {
-          e.preventDefault();
-          handleComposer({ action, directory, goal, query });
-      }
-
-      return (
-          <form onSubmit={handleSubmit} className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-4 shadow-lg border border-slate-600 space-y-3">
-              <select onChange={(e) => setAction(e.target.value)} value={action} className="rounded-lg bg-slate-700 border border-slate-600 px-3 py-2 text-sm text-white w-full">
-                  <option value="organize">Organizar Arquivos</option>
-                  <option value="index">Indexar Diretório</option>
-                  <option value="query">Consultar Memória</option>
-                  {/* Adicionar outras ações */}
-              </select>
-
-              {action === 'organize' && (
-                  <>
-                      <input placeholder="Caminho do diretório para organizar" value={directory} onChange={e => setDirectory(e.target.value)} className="w-full rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white" />
-                      <input placeholder="Objetivo (ex: por tipo, por projeto)" value={goal} onChange={e => setGoal(e.target.value)} className="w-full rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white" />
-                  </>
-              )}
-               {action === 'index' && (
-                  <input placeholder="Caminho do diretório para indexar" value={directory} onChange={e => setDirectory(e.target.value)} className="w-full rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white" />
-              )}
-               {action === 'query' && (
-                  <input placeholder="Sua pergunta sobre os arquivos" value={query} onChange={e => setQuery(e.target.value)} className="w-full rounded-md border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-white" />
-              )}
-              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Executar</button>
-          </form>
-      )
-  }
+  const handleCommandSubmit = (data: { action: string; payload: Record<string, string> }) => {
+    console.log("Sending command from InteractionHub:", data);
+    const command = {
+      action: data.action,
+      ...data.payload,
+    };
+    sendMessage(command);
+  };
 
   // Função para renderizar as mensagens do backend
   const renderMessage = (msg: any, index: number) => {
@@ -103,15 +53,11 @@ export default function InteractionHub() {
       </div>
       
       <div ref={containerRef} className="flex-1 overflow-y-auto rounded-xl bg-gradient-to-b from-slate-800/50 to-slate-900/50 border border-slate-600 p-6 mb-4 shadow-inner">
-        {/* Mapeia as mensagens do WebSocket */}
         {messages.map((msg, i) => renderMessage(msg, i))}
-        
-        {/* A tabela do plano de ação pode ser preenchida por uma mensagem específica do backend no futuro */}
       </div>
       
       <div className="py-2">
-        {/* Substituímos o ActionComposer estático pelo nosso novo componente dinâmico */}
-        <DynamicActionComposer />
+        <ActionComposer onSubmit={handleCommandSubmit} />
       </div>
     </div>
   );

@@ -123,6 +123,20 @@ async def query_files_in_memory(query: str, ctx: Context) -> dict:
 @hub_mcp.tool
 async def execute_planned_action(action: dict, root_directory: str, ctx: Context) -> dict:
     """
-    Ferramenta do hub para chamar a função de execução de ação do agente observador.
+    Ferramenta do hub para executar uma única ação planejada, delegando para o executor_agent.
     """
-    return await execute_planned_action_func.fn(action=action, root_directory=root_directory, ctx=ctx)
+    action_type = action.get("action")
+    await ctx.log(f"Hub: Executando ação delegada '{action_type}'", level="info")
+
+    result = {}
+    if action_type == "CREATE_FOLDER":
+        result = await create_folder.fn(path=action.get("path"), root_directory=root_directory, ctx=ctx)
+    elif action_type == "MOVE_FILE":
+        result = await move_file.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=root_directory, ctx=ctx)
+    elif action_type == "MOVE_FOLDER":
+        result = await move_folder.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=root_directory, ctx=ctx)
+    else:
+        result = {"status": "error", "details": f"Ação desconhecida recebida pelo hub: {action_type}"}
+        await ctx.log(result["details"], level="warning")
+
+    return result
