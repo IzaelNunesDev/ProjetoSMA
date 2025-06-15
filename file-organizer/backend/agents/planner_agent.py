@@ -47,12 +47,18 @@ async def create_organization_plan(files_metadata: list[dict], user_goal: str, c
 
     try:
         response = await model.generate_content_async(prompt)
-        await ctx.log("📝 Resposta da IA recebida, processando o plano...", level="info")
-        
+        await ctx.log(f"📝 Resposta recebida:\n{response.text}", level="debug")
+
         # Limpa a resposta do LLM para extrair apenas o JSON
         plan_str = response.text.strip().replace("```json", "").replace("```", "")
-        plan = json.loads(plan_str)
-        return plan
+
+        try:
+            plan = json.loads(plan_str)
+            if not isinstance(plan, dict) or "objective" not in plan or "steps" not in plan or not isinstance(plan["steps"], list):
+                raise ValueError("Plano malformado: campo 'objective' ou 'steps' ausente ou inválido.")
+            return plan
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Falha ao decodificar JSON: {e}\nTexto recebido:\n{plan_str}")
     except Exception as e:
         error_message = f"Erro ao gerar ou decodificar o plano da IA: {e}\nResposta recebida: {response.text if 'response' in locals() else 'N/A'}"
         await ctx.log(error_message, level="error")

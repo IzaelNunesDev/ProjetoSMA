@@ -77,7 +77,7 @@ async def index_directory(directory_path: str, ctx: Context) -> dict:
                 "content": content, # Redundante, mas útil para o hive mind
                 "source": "scanner_agent", # Fonte da memória
                 "tags": ["index", "scan", file["ext"].lstrip('.')], # Tags iniciais
-                "timestamp": datetime.fromtimestamp(file["modified_at"]).isoformat() # Timestamp
+                "timestamp": file["modified_at"] # Timestamp
             }
             for file, content in zip(files_with_content, contents_to_embed)
         ]
