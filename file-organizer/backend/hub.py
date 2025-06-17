@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 # Importa as FUNÇÕES dos agentes diretamente
-from agents.scanner_agent import scan_directory
+from agents.scanner_agent import scan_directory, summarize_scan_results
 from agents.planner_agent import create_organization_plan
 from agents.executor_agent import create_folder, move_file, move_folder
 # --- NOVA IMPORTAÇÃO PARA CORRIGIR BUG CRÍTICO ---
@@ -30,43 +30,62 @@ async def organize_directory(
     auto_approve: bool = False
 ):
     """
-    Orquestra o processo completo de organização de um diretório chamando as funções dos agentes diretamente.
+    Orquestra o processo completo de organização de um diretório usando sumarização para escalabilidade.
     """
     try:
         root_dir = Path(directory_path).expanduser().resolve()
         await ctx.log(f"Iniciando organização para o diretório: '{root_dir}' com o objetivo: '{user_goal}'", level="info")
 
-        # 1. Escanear
-        await ctx.log("🔍 Escaneando diretório...", level="info")
+        # 1. Escanear (detalhado)
+        await ctx.log("🔍 Escaneando diretório (Passo 1/4)...", level="info")
         metadata_list = await scan_directory.fn(directory_path=directory_path, ctx=ctx)
         
         if not metadata_list:
             msg = "Nenhum arquivo encontrado para organizar."
             await ctx.log(msg, level="info")
             return {"status": "success", "details": msg}
-
-        await ctx.log(f"✅ Análise concluída. {len(metadata_list)} arquivos encontrados.", level="info")
-
-        # 2. Planejar
-        await ctx.log("🧠 Criando um plano de organização...", level="info")
-        plan = await create_organization_plan.fn(files_metadata=metadata_list, user_goal=user_goal, ctx=ctx)
+        await ctx.log(f"✅ Análise detalhada concluída. {len(metadata_list)} arquivos encontrados.", level="info")
         
-        if not plan or not isinstance(plan, list) or not all('action' in p for p in plan):
-             msg = "O agente de planejamento retornou um plano inválido."
+        # 2. Sumarizar
+        await ctx.log("📊 Sumarizando estrutura (Passo 2/4)...", level="info")
+        dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
+        if not dir_summaries:
+            msg = "Não foi possível gerar um resumo da estrutura do diretório."
+            await ctx.log(msg, level="warning")
+            return {"status": "warning", "details": msg}
+        await ctx.log(f"✅ Sumarização concluída. {len(dir_summaries)} diretórios resumidos.", level="info")
+
+        # 3. Planejar (com base no resumo)
+        await ctx.log("🧠 Criando um plano de organização global (Passo 3/4)...", level="info")
+        # --- ADICIONE ESTE LOG ---
+        await ctx.log(f"Enviando para o planner os seguintes resumos: {json.dumps(dir_summaries, indent=2)}", level="debug")
+        # -------------------------
+        plan_object = await create_organization_plan.fn(
+            directory_summaries=dir_summaries, 
+            user_goal=user_goal, 
+            root_directory=str(root_dir),
+            ctx=ctx
+        )
+        
+        if not plan_object or not isinstance(plan_object, dict) or "steps" not in plan_object:
+             msg = "O agente de planejamento retornou um plano inválido ou não contém a chave 'steps'."
              await ctx.log(msg, level="error")
+             await ctx.log(f"Resposta recebida do planner: {plan_object}", level="debug")
              return {"status": "error", "details": msg}
+
+        plan = plan_object.get("steps", [])
+        
+        if not plan:
+            msg = "O plano gerado não contém ações."
+            await ctx.log(msg, level="info")
+            return {"status": "success", "details": msg}
 
         await ctx.log("📝 Plano gerado:", level="info")
         plan_details = "\n".join([f"  - {a.get('action', 'AÇÃO INDEFINIDA')}: {a.get('path') or a.get('from', 'N/A')}" for a in plan])
         await ctx.log(plan_details, level="info")
 
-        # 3. Confirmação de Execução (agora gerenciada pela UI antes de chamar esta função)
-        # Se auto_approve for False, presume-se que a UI já obteve confirmação.
-        # Se auto_approve for True, o plano será executado diretamente.
-        # O hub não realiza mais a confirmação interativa para aprovação do plano.
-
-        # 4. Executar
-        await ctx.log("\n🚀 Executando o plano...", level="info")
+        # 4. Executar o plano
+        await ctx.log("\n🚀 Executando o plano (Passo 4/4)...", level="info")
         execution_summary = []
         for action in plan:
             action_type = action.get("action")
@@ -76,20 +95,17 @@ async def organize_directory(
                 result = await create_folder.fn(path=action.get("path"), root_directory=directory_path, ctx=ctx)
             elif action_type == "MOVE_FILE":
                 result = await move_file.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
-            # --- NOVA LÓGICA DE EXECUÇÃO ---
             elif action_type == "MOVE_FOLDER":
+                # O destino para shutil.move é a pasta PAI, não o caminho completo final
+                # O 'to' do LLM é o diretório de destino, então está correto.
                 result = await move_folder.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
-            # -------------------------------
             else:
                 result = {"status": "skipped", "details": f"Ação desconhecida: {action_type}"}
             
             execution_summary.append(result)
-
             if result.get("status") == "error":
                 await ctx.log(f"❌ Falha na ação: {result.get('details')}", level="error")
-                if not auto_approve:
-                    await ctx.log("🛑 Execução interrompida devido a erro e auto_approve=False. A UI deve gerenciar a continuação, se desejado.", level="warning")
-                    break
+                break
         
         await ctx.log("\n✨ Organização finalizada! ✨", level="info")
         return {"status": "success", "summary": execution_summary}

@@ -1,5 +1,3 @@
-# agents/planner_agent.py (VERSÃO CORRIGIDA)
-
 import os
 import json
 import google.generativeai as genai
@@ -16,28 +14,21 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 mcp = FastMCP(name="PlannerAgent")
 
 @mcp.tool
-async def create_organization_plan(files_metadata: list[dict], user_goal: str, ctx: Context) -> list[dict]:
+async def create_organization_plan(directory_summaries: list[dict], user_goal: str, root_directory: str, ctx: Context) -> dict:
     """
-    Cria um plano de organização de arquivos baseado nos metadados e no objetivo do usuário.
-    O plano consiste em uma lista de ações: CREATE_FOLDER, MOVE_FILE.
+    Cria um plano de organização de alto nível baseado nos resumos dos diretórios e no objetivo do usuário.
+    O plano consiste em uma lista de ações: CREATE_FOLDER, MOVE_FOLDER, MOVE_FILE.
     """
-    await ctx.log(f"Criando plano com base no objetivo: '{user_goal}'", level="info")
+    await ctx.log(f"Criando plano com base no objetivo: '{user_goal}' para {len(directory_summaries)} diretórios.", level="info")
     
-    model = genai.GenerativeModel('gemini-1.5-flash')
-
-    # Obtenha o diretório raiz do primeiro arquivo, assumindo que todos são do mesmo lugar.
-    # Uma abordagem mais robusta seria passar o diretório raiz como argumento para a função.
-    # Por simplicidade, vamos inferir:
-    if files_metadata:
-        root_dir = str(Path(files_metadata[0]['path']).parent)
-    else:
-        root_dir = "N/A"
+    # MUDE AQUI PARA 'gemini-2.5-flash-lite'
+    model = genai.GenerativeModel('gemini-2.5-flash-lite')
 
     prompt = prompt_manager.format_prompt(
         task_name="file-organization", 
         user_goal=user_goal, 
-        files_metadata=json.dumps(files_metadata, indent=2, ensure_ascii=False),
-        root_directory=root_dir # Adiciona a nova variável
+        directory_summaries=json.dumps(directory_summaries, indent=2, ensure_ascii=False),
+        root_directory=root_directory
     )
 
     if not prompt:
@@ -47,20 +38,26 @@ async def create_organization_plan(files_metadata: list[dict], user_goal: str, c
 
     try:
         response = await model.generate_content_async(prompt)
-        await ctx.log(f"📝 Resposta recebida:\n{response.text}", level="debug")
+        await ctx.log(f"📝 Resposta do planner recebida:\n{response.text}", level="debug")
 
-        # Limpa a resposta do LLM para extrair apenas o JSON
-        plan_str = response.text.strip().replace("```json", "").replace("```", "")
+        # Limpeza robusta para extrair o bloco JSON
+        plan_str = response.text.strip()
+        if plan_str.startswith("```json"):
+            plan_str = plan_str[7:]
+        if plan_str.endswith("```"):
+            plan_str = plan_str[:-3]
+        
+        plan = json.loads(plan_str)
 
-        try:
-            plan = json.loads(plan_str)
-            if not isinstance(plan, dict) or "objective" not in plan or "steps" not in plan or not isinstance(plan["steps"], list):
-                raise ValueError("Plano malformado: campo 'objective' ou 'steps' ausente ou inválido.")
-            return plan
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Falha ao decodificar JSON: {e}\nTexto recebido:\n{plan_str}")
-    except Exception as e:
-        error_message = f"Erro ao gerar ou decodificar o plano da IA: {e}\nResposta recebida: {response.text if 'response' in locals() else 'N/A'}"
+        if not isinstance(plan, dict) or "objective" not in plan or "steps" not in plan or not isinstance(plan["steps"], list):
+            raise ValueError("Plano malformado: campo 'objective' ou 'steps' ausente ou inválido.")
+            
+        return plan
+    except json.JSONDecodeError as e:
+        error_message = f"Falha ao decodificar JSON do plano: {e}\nTexto recebido:\n{plan_str}"
         await ctx.log(error_message, level="error")
-        # Retorna uma lista vazia em caso de erro para não quebrar o fluxo do hub
-        return []
+        return {"objective": "Falha no planejamento (Erro de JSON)", "steps": []}
+    except Exception as e:
+        error_message = f"Erro ao gerar o plano da IA: {e}"
+        await ctx.log(error_message, level="error")
+        return {"objective": f"Falha no planejamento ({type(e).__name__})", "steps": []}

@@ -5,6 +5,7 @@ import fitz
 from pathlib import Path
 from fastmcp import FastMCP, Context
 from datetime import datetime
+from collections import defaultdict # Adicione este import se não estiver lá
 
 mcp = FastMCP(name="ScannerAgent")
 
@@ -106,3 +107,47 @@ async def scan_directory(directory_path: str, ctx: Context) -> list[dict]:
 
     await ctx.log(f"✅ Escaneamento finalizado: {len(resultados)} arquivos analisados.", level="info")
     return resultados
+
+# --- NOVA FUNÇÃO DE SUMARIZAÇÃO ---
+@mcp.tool
+async def summarize_scan_results(scan_results: list[dict], ctx: Context) -> list[dict]:
+    """
+    Resume os resultados detalhados do escaneamento, agrupando arquivos por diretório pai.
+    Isso cria uma visão de alto nível da estrutura, ideal para o planner.
+    """
+    await ctx.log("📊 Resumindo resultados do escaneamento...", level="info")
+    
+    # Agrupa metadados de arquivos pelo caminho do diretório pai
+    grouped_by_dir = defaultdict(list)
+    for item in scan_results:
+        # Garante que estamos lidando apenas com metadados de arquivos
+        if item.get("type") == "file":
+            parent_dir = str(Path(item['path']).parent)
+            grouped_by_dir[parent_dir].append(item)
+
+    summary_list = []
+    for dir_path, items in grouped_by_dir.items():
+        file_count = len(items)
+        
+        # Coleta os tipos de arquivos e a estrutura deduzida
+        # A estrutura deduzida deve ser a mesma para todos os arquivos na mesma pasta, então pegamos a do primeiro
+        extensions = sorted(list({item['ext'] for item in items if item.get('ext')}))
+        structure = items[0]['estrutura_deduzida'] if items else 'desconhecida'
+        
+        # Cria um resumo textual simples para o LLM
+        types_str = ", ".join(extensions[:5]) # Mostra até 5 tipos de extensão para brevidade
+        if len(extensions) > 5:
+            types_str += ", ..."
+        text_summary = f"Contém {file_count} arquivo(s). Tipos principais: {types_str}. Estrutura da pasta: {structure}."
+        
+        # Monta o objeto de resumo para este diretório
+        summary_list.append({
+            "path": dir_path,
+            "file_count": file_count,
+            "types": extensions,
+            "estrutura_deduzida": structure,
+            "summary": text_summary
+        })
+
+    await ctx.log(f"✅ Resumo concluído. {len(scan_results)} arquivos agrupados em {len(summary_list)} diretórios.", level="info")
+    return summary_list
