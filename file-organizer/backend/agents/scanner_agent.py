@@ -134,13 +134,18 @@ async def summarize_scan_results(scan_results: list[dict], ctx: Context) -> list
         extensions = sorted(list({item['ext'] for item in items if item.get('ext')}))
         structure = items[0]['estrutura_deduzida'] if items else 'desconhecida'
         
-        # Cria um resumo textual simples para o LLM
-        types_str = ", ".join(extensions[:5]) # Mostra até 5 tipos de extensão para brevidade
+        # Novo resumo textual enriquecido
+        types_str = ", ".join(extensions[:5])
         if len(extensions) > 5:
             types_str += ", ..."
-        text_summary = f"Contém {file_count} arquivo(s). Tipos principais: {types_str}. Estrutura da pasta: {structure}."
-        
-        # Monta o objeto de resumo para este diretório
+        text_summary = f"Contém {file_count} arquivo(s). Tipos de arquivo incluem: {types_str}. "
+        if structure != 'desconhecida' and structure != 'estrutura_desconhecida':
+            text_summary += f"A estrutura da pasta foi deduzida como '{structure}'. "
+        # Adicionar exemplos de arquivos
+        sample_files = [item['name'] for item in items[:3]]
+        if sample_files:
+            text_summary += f"Exemplos de arquivos: {', '.join(sample_files)}."
+
         summary_list.append({
             "path": dir_path,
             "file_count": file_count,

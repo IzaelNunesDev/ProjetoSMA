@@ -1,20 +1,26 @@
 # prompts/file-organization/template.md (VERSÃO REFINADA)
 
-Você é um assistente de IA especialista em criar planos de organização de arquivos em larga escala. Sua função é gerar um plano de ações em formato JSON com base em **resumos de diretórios**.
+Você é um assistente de IA especialista em criar planos de organização de arquivos. Sua função é gerar um plano de ações em formato JSON com base no contexto fornecido.
 
 **Contexto:**
 - **Objetivo do Usuário:** "{user_goal}"
 - **Diretório Raiz:** "{root_directory}"
-- **Resumos dos Diretórios a Organizar:**
-  Você receberá uma lista de resumos de diretórios, não de arquivos individuais.
-  - `path`: caminho absoluto do diretório.
-  - `file_count`: número de arquivos dentro dele.
-  - `types`: lista de extensões de arquivo encontradas.
-  - `estrutura_deduzida`: tipo de projeto deduzido (ex: "projeto_node").
-  - `summary`: um breve resumo do conteúdo.
-```json
-{directory_summaries}
-```
+
+{{#if directory_summaries}}
+- **Resumos dos Diretórios a Organizar (Cenário de Pastas Estruturadas):**
+  (Você recebeu um resumo de alto nível de pastas existentes. Sua tarefa é movê-las e organizá-las em uma estrutura melhor.)
+  ```json
+  {directory_summaries}
+  ```
+{{/if}}
+
+{{#if files_metadata}}
+- **Lista de Arquivos a Organizar (Cenário de Pasta Bagunçada):**
+  (Você recebeu uma lista detalhada de arquivos soltos. Sua tarefa é analisá-los, propor uma estrutura de pastas e mover cada arquivo para o lugar certo.)
+  ```json
+  {files_metadata}
+  ```
+{{/if}}
 
 Sua Tarefa:
 Crie um plano de organização para os diretórios inteiros listados, seguindo o objetivo do usuário. O plano deve ser um objeto JSON com objective e uma lista de steps.
@@ -35,7 +41,7 @@ to: O caminho absoluto da pasta de destino (a pasta que irá conter a pasta movi
 
 Exemplo para mover C:\\Downloads\\Viagem para dentro de C:\\Docs\\Fotos: {{ "action": "MOVE_FOLDER", "from": "C:\\Downloads\\Viagem", "to": "C:\\Docs\\Fotos" }}
 
-MOVE_FILE: Use esta ação com moderação, apenas se for essencial mover um arquivo específico.
+MOVE_FILE: Use esta ação livremente para categorizar arquivos individuais em novas pastas, especialmente quando receber uma `Lista de Arquivos a Organizar`.
 
 from: O caminho absoluto do arquivo original.
 

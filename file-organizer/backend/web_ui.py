@@ -104,6 +104,17 @@ active_watchers = {}
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+
+    # --- NOVO: Handler de Log para o WebSocket ---
+    async def websocket_log_handler(message: str, level: str):
+        """Envia logs para o cliente websocket conectado."""
+        await websocket.send_json({
+            "type": "log",
+            "level": level,
+            "message": message
+        })
+    # ---------------------------------------------
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -118,9 +129,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     move_action = {"action": "MOVE_FILE", "from": suggestion_data["from"], "to": suggestion_data["to"]}
                     dest_folder = Path(move_action['to']).parent
                     if not dest_folder.exists():
-                        await client.call_tool('execute_planned_action', {'action': {'action': 'CREATE_FOLDER', 'path': str(dest_folder)}, 'root_directory': root_dir})
+                        await client.call_tool('execute_planned_action', {'action': {'action': 'CREATE_FOLDER', 'path': str(dest_folder)}, 'root_directory': root_dir}, log_handler=websocket_log_handler)
 
-                    await client.call_tool('execute_planned_action', {'action': move_action, 'root_directory': root_dir})
+                    await client.call_tool('execute_planned_action', {'action': move_action, 'root_directory': root_dir}, log_handler=websocket_log_handler)
                     await websocket.send_json({"type": "log", "level": "info", "message": f"Arquivo movido para {suggestion_data['to']}"})
                 continue
 
@@ -160,11 +171,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     async with Client(hub_mcp) as client:
-                        tool_output_parts = await client.call_tool(tool_to_call, {"directory_path": directory})
+                        tool_output_parts = await client.call_tool(tool_to_call, {"directory_path": directory}, log_handler=websocket_log_handler)
                         raw_tool_output_text = tool_output_parts[0].text if tool_output_parts and tool_output_parts[0].text else "{}"
                         final_result_data = json.loads(raw_tool_output_text)
                         await websocket.send_json({"type": "result", "data": final_result_data})
                 except Exception as e:
+                    await websocket_log_handler(f"Ocorreu um erro crítico: {e}", "error")
                     await websocket.send_json({"type": "error", "message": f"Ocorreu um erro ao executar '{sub_action}': {e}"})
                 continue
 
@@ -190,7 +202,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 try:
-                    tool_output_parts = await client.call_tool(current_tool_name_to_call, current_tool_params_to_call)
+                    tool_output_parts = await client.call_tool(current_tool_name_to_call, current_tool_params_to_call, log_handler=websocket_log_handler)
                     raw_tool_output_text = tool_output_parts[0].text if tool_output_parts and tool_output_parts[0].text else "{}"
                     final_result_data = json.loads(raw_tool_output_text)
                     
@@ -198,6 +210,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_json({"type": result_type, "data": final_result_data})
 
                 except Exception as e:
+                    await websocket_log_handler(f"Ocorreu um erro crítico: {e}", "error")
                     await websocket.send_json({"type": "error", "message": f"Ocorreu um erro ao executar '{action}': {e}"})
 
     except WebSocketDisconnect:

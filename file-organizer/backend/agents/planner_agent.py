@@ -4,6 +4,7 @@ import google.generativeai as genai
 from fastmcp import FastMCP, Context  # Importar FastMCP
 from prompt_manager import prompt_manager
 from pathlib import Path
+from typing import Optional
 
 # Carrega a chave de API do .env
 from dotenv import load_dotenv
@@ -14,21 +15,43 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 mcp = FastMCP(name="PlannerAgent")
 
 @mcp.tool
-async def create_organization_plan(directory_summaries: list[dict], user_goal: str, root_directory: str, ctx: Context) -> dict:
+async def create_organization_plan(
+    user_goal: str, 
+    root_directory: str, 
+    ctx: Context,
+    directory_summaries: Optional[list[dict]] = None, 
+    files_metadata: Optional[list[dict]] = None
+) -> dict:
     """
-    Cria um plano de organização de alto nível baseado nos resumos dos diretórios e no objetivo do usuário.
+    Cria um plano de organização com base em resumos de diretórios (para pastas estruturadas)
+    ou em uma lista detalhada de arquivos (para pastas planas/bagunçadas).
     O plano consiste em uma lista de ações: CREATE_FOLDER, MOVE_FOLDER, MOVE_FILE.
     """
-    await ctx.log(f"Criando plano com base no objetivo: '{user_goal}' para {len(directory_summaries)} diretórios.", level="info")
     
-    # MUDE AQUI PARA 'gemini-2.5-flash-lite'
-    model = genai.GenerativeModel('gemini-2.5-flash-lite')
+    if not directory_summaries and not files_metadata:
+        raise ValueError("É necessário fornecer 'directory_summaries' ou 'files_metadata'.")
+
+    log_message = f"Criando plano com base no objetivo: '{user_goal}'. "
+    if directory_summaries:
+        log_message += f"Analisando {len(directory_summaries)} resumos de diretórios."
+    else:
+        log_message += f"Analisando {len(files_metadata)} arquivos individuais."
+    await ctx.log(log_message, level="info")
+
+    model = genai.GenerativeModel('gemini-1.5-flash')
+
+    # Constrói o dicionário de substituições dinamicamente
+    prompt_data = {
+        "user_goal": user_goal,
+        "root_directory": root_directory,
+        # Inclui as chaves apenas se os dados não forem None ou vazios
+        "directory_summaries": json.dumps(directory_summaries, indent=2, ensure_ascii=False) if directory_summaries else None,
+        "files_metadata": json.dumps(files_metadata, indent=2, ensure_ascii=False) if files_metadata else None,
+    }
 
     prompt = prompt_manager.format_prompt(
         task_name="file-organization", 
-        user_goal=user_goal, 
-        directory_summaries=json.dumps(directory_summaries, indent=2, ensure_ascii=False),
-        root_directory=root_directory
+        **{k: v for k, v in prompt_data.items() if v is not None} # Passa apenas as chaves com valor
     )
 
     if not prompt:

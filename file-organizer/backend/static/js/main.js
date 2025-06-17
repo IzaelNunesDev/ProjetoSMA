@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const ws = new WebSocket(`ws://${window.location.host}/ws`);
 
-    function addMessageToChat(type, content, level = 'info') {
+    function addMessageToChat(type, content, level = 'info', contentType = 'text') {
         const messagesContainer = messages;
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', type === 'user' ? 'user' : 'agent');
@@ -32,7 +32,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const contentDiv = document.createElement('div');
         contentDiv.classList.add('content');
 
-        if (type === 'log') {
+        if (contentType === 'html') {
+            contentDiv.innerHTML = content.data;
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+        } else if (type === 'log') {
             const logDiv = document.createElement('div');
             logDiv.classList.add('log-message');
             logDiv.textContent = content;
@@ -97,10 +101,30 @@ function displaySuggestion(suggestion) {
         const data = JSON.parse(event.data);
         console.log("Received data:", data);
 
+        // Reabilita o formulário ao receber resultado final, erro ou query
+        if (data.type === 'result' || data.type === 'query_result' || data.type === 'error') {
+            setFormEnabled(true);
+        }
+
         if (data.type === 'log') {
             addMessageToChat('log', data.message, data.level);
         } else if (data.type === 'result') {
-            addMessageToChat('agent', {message: '✅ Operação concluída!', data: data.data});
+            // Formatação amigável para organização
+            if (data.data.summary && Array.isArray(data.data.summary)) {
+                let formattedResult = '<strong>Resumo da Organização:</strong><ul style="list-style-type: none; padding-left: 0;">';
+                data.data.summary.forEach(item => {
+                    if (item.status === 'success') {
+                        formattedResult += `<li>✔️ [${item.action||''}] ${item.path || item.from} movido/criado com sucesso.</li>`;
+                    } else {
+                        formattedResult += `<li style="color: #ff6b6b;">❌ [${item.action||''}] Falha: ${item.details}</li>`;
+                    }
+                });
+                formattedResult += '</ul>';
+                addMessageToChat('agent', { message: '✅ Operação concluída!', data: formattedResult }, 'info', 'html');
+            } else {
+                // Fallback para outros resultados
+                addMessageToChat('agent', {message: '✅ Operação concluída!', data: data.data});
+            }
         } else if (data.type === 'query_result') {
             addMessageToChat('query_result', data.data);
         } else if (data.type === 'suggestion') {
@@ -125,8 +149,17 @@ function displaySuggestion(suggestion) {
         submitButton.textContent = buttonText;
     });
 
+    // --- Controle de estado do formulário ---
+    const formInputs = document.querySelectorAll('#form input, #form select, #form button');
+    function setFormEnabled(enabled) {
+        formInputs.forEach(input => input.disabled = !enabled);
+        submitButton.style.cursor = enabled ? 'pointer' : 'not-allowed';
+        submitButton.style.backgroundColor = enabled ? '#007bff' : '#555';
+    }
+
     form.addEventListener('submit', function(event) {
         event.preventDefault();
+        setFormEnabled(false); // Desabilita ao submeter
         const action = actionSelect.value;
         let payload = { action };
         let userMessage = '';

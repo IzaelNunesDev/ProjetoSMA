@@ -46,26 +46,46 @@ async def organize_directory(
             return {"status": "success", "details": msg}
         await ctx.log(f"✅ Análise detalhada concluída. {len(metadata_list)} arquivos encontrados.", level="info")
         
-        # 2. Sumarizar
-        await ctx.log("📊 Sumarizando estrutura (Passo 2/4)...", level="info")
-        dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
-        if not dir_summaries:
-            msg = "Não foi possível gerar um resumo da estrutura do diretório."
-            await ctx.log(msg, level="warning")
-            return {"status": "warning", "details": msg}
-        await ctx.log(f"✅ Sumarização concluída. {len(dir_summaries)} diretórios resumidos.", level="info")
+        # --- NOVA LÓGICA DE DECISÃO ---
+        # Analisa se o diretório é "plano" ou "estruturado"
+        parent_dirs = {str(Path(f['path']).parent) for f in metadata_list}
+        # Heurística: se há 2 ou menos diretórios pais (o raiz e talvez um subdiretório), trate como plano.
+        # O valor 2 é escolhido porque o próprio diretório raiz conta como um.
+        is_flat_directory = len(parent_dirs) <= 2
 
-        # 3. Planejar (com base no resumo)
-        await ctx.log("🧠 Criando um plano de organização global (Passo 3/4)...", level="info")
-        # --- ADICIONE ESTE LOG ---
-        await ctx.log(f"Enviando para o planner os seguintes resumos: {json.dumps(dir_summaries, indent=2)}", level="debug")
-        # -------------------------
-        plan_object = await create_organization_plan.fn(
-            directory_summaries=dir_summaries, 
-            user_goal=user_goal, 
-            root_directory=str(root_dir),
-            ctx=ctx
-        )
+        plan_object = None
+        if is_flat_directory:
+            # Cenário 2: Diretório plano, usar planejamento a nível de arquivo
+            await ctx.log("🧠 Diretório plano detectado. Criando um plano de organização detalhado (Passo 2/4)...", level="info")
+            plan_object = await create_organization_plan.fn(
+                directory_summaries=None,       # Não usamos resumos aqui
+                files_metadata=metadata_list,   # Enviamos a lista detalhada de arquivos
+                user_goal=user_goal,
+                root_directory=str(root_dir),
+                ctx=ctx
+            )
+        else:
+            # Cenário 1: Diretório estruturado, usar resumos (lógica atual)
+            # 2. Sumarizar
+            await ctx.log("📊 Sumarizando estrutura de diretórios (Passo 2/4)...", level="info")
+            dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
+            if not dir_summaries:
+                msg = "Não foi possível gerar um resumo da estrutura do diretório."
+                await ctx.log(msg, level="warning")
+                return {"status": "warning", "details": msg}
+            await ctx.log(f"✅ Sumarização concluída. {len(dir_summaries)} diretórios resumidos.", level="info")
+
+            # 3. Planejar (com base no resumo)
+            await ctx.log("🧠 Criando um plano de organização global (Passo 3/4)...", level="info")
+            await ctx.log(f"Enviando para o planner os seguintes resumos: {json.dumps(dir_summaries, indent=2)}", level="debug")
+            plan_object = await create_organization_plan.fn(
+                directory_summaries=dir_summaries,
+                files_metadata=None, # Não usamos metadados de arquivos aqui
+                user_goal=user_goal,
+                root_directory=str(root_dir),
+                ctx=ctx
+            )
+        # --- FIM DA LÓGICA DE DECISÃO ---
         
         if not plan_object or not isinstance(plan_object, dict) or "steps" not in plan_object:
              msg = "O agente de planejamento retornou um plano inválido ou não contém a chave 'steps'."
