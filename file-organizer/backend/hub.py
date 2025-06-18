@@ -10,6 +10,7 @@ from agents.scanner_agent import scan_directory, summarize_scan_results
 # --- NOVOS IMPORTS ---
 from agents.categorizer_agent import categorize_items
 from agents.planner_agent import build_plan_from_categorization
+from agents.rules_agent import apply_categorization_rules
 # --------------------
 from agents.executor_agent import create_folder, move_file, move_folder
 from agents.suggestion_agent import suggest_file_move
@@ -23,9 +24,9 @@ hub_mcp = FastMCP(name="FileOrganizerHub")
 
 @hub_mcp.tool
 async def organize_directory(
-    directory_path: str,
-    user_goal: str,
     ctx: Context,
+    dir_path: str,
+    user_goal: str,
     auto_approve: bool = False,
     dry_run: bool = False
 ):
@@ -33,32 +34,41 @@ async def organize_directory(
     Orquestra o processo de organização em duas fases: Categorização e Construção do Plano.
     """
     try:
-        root_dir = Path(directory_path).expanduser().resolve()
+        root_dir = Path(dir_path).expanduser().resolve()
         await ctx.log(f"Iniciando organização para: '{root_dir}'", level="info")
 
         # FASE 0: SCAN (sem mudanças)
-        await ctx.log("🔍 Passo 1/4: Escaneando diretório...", level="info")
-        metadata_list = await scan_directory.fn(directory_path=directory_path, ctx=ctx)
+        await ctx.log("🔍 Passo 1/5: Escaneando diretório...", level="info")
+        metadata_list = await scan_directory.fn(directory_path=dir_path, ctx=ctx)
         dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
         loose_files_metadata = [f for f in metadata_list if str(Path(f['path']).parent) == str(root_dir)]
         await ctx.log(f"✅ Scan concluído: {len(dir_summaries)} subpastas e {len(loose_files_metadata)} arquivos soltos.", level="info")
 
-        # FASE 1: CATEGORIZAR (Map)
-        await ctx.log("🧠 Passo 2/4: Categorizando itens com IA...", level="info")
-        categorization_map = await categorize_items.fn(
+        # Antes da FASE 1: CATEGORIZAR
+        await ctx.log("🧠 Passo 2/5: Aplicando regras de categorização rápida...", level="info")
+        all_items = dir_summaries + loose_files_metadata
+        rule_categorized_map, items_for_llm = await apply_categorization_rules(all_items)
+        await ctx.log(f"✅ {len(rule_categorized_map)} itens categorizados por regras.", level="info")
+
+        # FASE 2: CATEGORIZAR COM LLM (apenas os restantes)
+        await ctx.log("🧠 Passo 3/5: Categorizando itens restantes com IA...", level="info")
+        llm_categorized_map = await categorize_items.fn(
             user_goal=user_goal,
             root_directory=str(root_dir),
             directory_summaries=dir_summaries,
             loose_files_metadata=loose_files_metadata,
             ctx=ctx
         )
-        if not categorization_map:
+        if not llm_categorized_map:
             msg = "Não foi possível gerar um mapa de categorização."
             await ctx.log(msg, level="warning")
             return {"status": "warning", "details": msg}
 
-        # FASE 2: CONSTRUIR PLANO (Reduce)
-        await ctx.log("🛠️ Passo 3/4: Construindo plano de execução...", level="info")
+        # Combinar os resultados
+        categorization_map = {**rule_categorized_map, **llm_categorized_map}
+
+        # FASE 3: CONSTRUIR PLANO (Reduce)
+        await ctx.log("🛠️ Passo 4/5: Construindo plano de execução...", level="info")
         plan_object = await build_plan_from_categorization.fn(
             root_directory=str(root_dir),
             categorization_map=categorization_map,
@@ -70,8 +80,8 @@ async def organize_directory(
             await ctx.log("🔹 Modo de simulação (dry run) ativado. Retornando plano para aprovação.", level="info")
             return {"status": "plan_generated", "plan": plan_object}
 
-        # 4. Executar o plano
-        await ctx.log("⚡ Executando plano de organização (Passo 4/4)...", level="info")
+        # 5. Executar o plano
+        await ctx.log("⚡ Executando plano de organização (Passo 5/5)...", level="info")
         execution_results = await execute_plan.fn(
             plan=plan_object,
             ctx=ctx

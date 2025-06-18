@@ -3,7 +3,7 @@ import json
 import asyncio
 from typing import List
 from pathlib import Path
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from hub import hub_mcp
 from fastmcp import Client, Context
 from watcher import start_watcher_thread
+from agents.memory_agent import MemoryAgent, get_memory_agent
 
 # Configuração do FastAPI e dos templates
 app = FastAPI()
@@ -262,3 +263,46 @@ async def websocket_endpoint(websocket: WebSocket):
         Context.log = original_log_method
         # Desconecta o cliente se ele ainda estiver na lista
         manager.disconnect(websocket)
+
+@app.post("/api/approve_suggestion")
+async def approve_suggestion(
+    suggestion_data: dict,
+    memory_agent: MemoryAgent = Depends(get_memory_agent)
+):
+    await memory_agent.post_memory_experience(
+        experience=f"Usuário aprovou mover {suggestion_data['from']} para {suggestion_data['to']}",
+        tags=['feedback', 'approval', 'move'],
+        source_agent='UserInteraction',
+        reward=1.0
+    )
+    return {"status": "approved"}
+
+@app.post("/api/reject_suggestion")
+async def reject_suggestion(
+    suggestion_data: dict,
+    memory_agent: MemoryAgent = Depends(get_memory_agent)
+):
+    await memory_agent.post_memory_experience(
+        experience=f"Usuário rejeitou mover {suggestion_data['from']} para {suggestion_data['to']}",
+        tags=['feedback', 'rejection', 'move'],
+        source_agent='UserInteraction',
+        reward=-1.0
+    )
+    return {"status": "rejected"}
+
+@app.post("/api/find_duplicates")
+async def api_find_duplicates(
+    request: Request,
+    ctx: Context = Depends(get_context)
+):
+    data = await request.json()
+    directory = data.get('directory')
+    if not directory:
+        return {"status": "error", "message": "Directory parameter required"}
+    
+    duplicates = await ctx.call_tool(
+        'find_duplicates', 
+        directory=directory
+    )
+    
+    return {"status": "success", "duplicates": duplicates}

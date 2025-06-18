@@ -2,6 +2,10 @@
 import os
 from pathlib import Path
 from fastmcp import FastMCP, Context
+import hashlib
+import os
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 mcp = FastMCP(name="MaintenanceAgent")
 
@@ -21,4 +25,27 @@ async def find_empty_folders(directory_path: str, ctx: Context) -> dict:
     
     return {"status": "success", "empty_folders": empty_folders}
 
-# Outras ferramentas de manutenção como find_duplicates e find_anomalies podem ser adicionadas aqui.
+@mcp.tool
+async def find_duplicates(ctx: Context, directory: str) -> List[Tuple[str, List[str]]]:
+    """Find duplicate files by content hash"""
+    await ctx.log(f"🔍 Searching for duplicates in {directory}", level="info")
+    
+    hash_map: Dict[str, List[str]] = {}
+    
+    for root, _, files in os.walk(directory):
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            try:
+                with open(filepath, "rb") as f:
+                    file_hash = hashlib.sha256(f.read()).hexdigest()
+                    hash_map.setdefault(file_hash, []).append(filepath)
+            except (IOError, OSError) as e:
+                await ctx.log(f"⚠️ Could not read {filepath}: {e}", level="warning")
+    
+    # Filter for hashes with multiple files
+    duplicates = [(h, paths) for h, paths in hash_map.items() if len(paths) > 1]
+    await ctx.log(f"✅ Found {len(duplicates)} sets of duplicates", level="info")
+    
+    return duplicates
+
+# Outras ferramentas de manutenção como find_anomalies podem ser adicionadas aqui.

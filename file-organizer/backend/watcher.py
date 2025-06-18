@@ -5,6 +5,7 @@ from threading import Thread
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from typing import Callable, Awaitable
+from hub import hub_mcp
 
 class AsyncWatcherEventHandler(FileSystemEventHandler):
     def __init__(self, loop: asyncio.AbstractEventLoop, callback: Callable[[str], Awaitable[None]]):
@@ -15,6 +16,26 @@ class AsyncWatcherEventHandler(FileSystemEventHandler):
         if not event.is_directory:
             # Chama a função de callback assíncrona de forma segura a partir da thread
             asyncio.run_coroutine_threadsafe(self.callback(event.src_path), self.loop)
+
+    def on_deleted(self, event):
+        """Handle file deletion events"""
+        path = event.src_path
+        asyncio.create_task(
+            hub_mcp.call_tool(
+                'handle_file_deleted', 
+                path=path
+            )
+        )
+    
+    def on_modified(self, event):
+        """Handle file modification events"""
+        path = event.src_path
+        asyncio.create_task(
+            hub_mcp.call_tool(
+                'handle_file_modified', 
+                path=path
+            )
+        )
 
 def start_watcher_thread(directory_path: str, callback: Callable[[str], Awaitable[None]]) -> Observer:
     """Cria e inicia um observador em uma thread, usando um callback assíncrono."""

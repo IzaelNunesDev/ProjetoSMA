@@ -2,7 +2,7 @@ fastmcp @ git+https://github.com/jlowin/fastmcp.git
 google-generativeai
 python-dotenv
 PyMuPDF
-Pillow
+Pillow>=10.0.0
 rich
 typer
 fastapi
@@ -12,3 +12,6 @@ jinja2
 websockets
 numpy
 watchdog==6.0.0
+chromadb
+pytesseract
+magika
