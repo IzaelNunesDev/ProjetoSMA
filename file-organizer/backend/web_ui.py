@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 from hub import hub_mcp
-from fastmcp import Client
+from fastmcp import Client, Context
 from watcher import start_watcher_thread
 
 # Configuração do FastAPI e dos templates
@@ -105,17 +105,33 @@ active_watchers = {}
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
 
-    # --- NOVO: Handler de Log para o WebSocket ---
     async def websocket_log_handler(message: str, level: str):
         """Envia logs para o cliente websocket conectado."""
-        await websocket.send_json({
-            "type": "log",
-            "level": level,
-            "message": message
-        })
-    # ---------------------------------------------
+        try:
+            await websocket.send_json({
+                "type": "log",
+                "level": level,
+                "message": message
+            })
+        except Exception as e:
+            # Ignora erros se o cliente desconectar durante o log
+            print(f"Could not send log to websocket: {e}")
 
+    # --- NOVO: LÓGICA DE MONKEY-PATCHING ---
+    # 1. Salvar o método de log original do Context
+    original_log_method = Context.log
+
+    # 2. Criar nosso log "wrapper" que chama o original E o nosso websocket_log_handler
+    async def patched_log_method(self, message, level="info"):
+        # Chama o logger original para manter o log no console do servidor
+        await original_log_method(self, message, level)
+        # Envia o log também para a interface web
+        await websocket_log_handler(message, level)
+    
     try:
+        # 3. Substituir o método log do Context pelo nosso
+        Context.log = patched_log_method
+
         while True:
             data = await websocket.receive_text()
             payload = json.loads(data)
@@ -129,9 +145,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     move_action = {"action": "MOVE_FILE", "from": suggestion_data["from"], "to": suggestion_data["to"]}
                     dest_folder = Path(move_action['to']).parent
                     if not dest_folder.exists():
-                        await client.call_tool('execute_planned_action', {'action': {'action': 'CREATE_FOLDER', 'path': str(dest_folder)}, 'root_directory': root_dir}, log_handler=websocket_log_handler)
+                        await client.call_tool('execute_planned_action', {'action': {'action': 'CREATE_FOLDER', 'path': str(dest_folder)}, 'root_directory': root_dir})
 
-                    await client.call_tool('execute_planned_action', {'action': move_action, 'root_directory': root_dir}, log_handler=websocket_log_handler)
+                    await client.call_tool('execute_planned_action', {'action': move_action, 'root_directory': root_dir})
                     await websocket.send_json({"type": "log", "level": "info", "message": f"Arquivo movido para {suggestion_data['to']}"})
                 continue
 
@@ -171,7 +187,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     async with Client(hub_mcp) as client:
-                        tool_output_parts = await client.call_tool(tool_to_call, {"directory_path": directory}, log_handler=websocket_log_handler)
+                        tool_output_parts = await client.call_tool(tool_to_call, {"directory_path": directory})
                         raw_tool_output_text = tool_output_parts[0].text if tool_output_parts and tool_output_parts[0].text else "{}"
                         final_result_data = json.loads(raw_tool_output_text)
                         await websocket.send_json({"type": "result", "data": final_result_data})
@@ -186,13 +202,23 @@ async def websocket_endpoint(websocket: WebSocket):
             async with Client(hub_mcp) as client:
                 if action == "organize":
                     current_tool_name_to_call = "organize_directory"
-                    current_tool_params_to_call = {"directory_path": payload.get("directory"), "user_goal": payload.get("goal"), "auto_approve": True}
+                    current_tool_params_to_call = {
+                        "directory_path": payload.get("directory"), 
+                        "user_goal": payload.get("goal"), 
+                        "auto_approve": True,
+                        "dry_run": payload.get("dry_run", False)
+                    }
+                    if current_tool_params_to_call["dry_run"]:
+                        await websocket.send_json({"type": "log", "level": "info", "message": "Executando organização em modo de simulação (dry run)."})
                 elif action == "index":
                     current_tool_name_to_call = "index_directory_for_memory"
                     current_tool_params_to_call = {"directory_path": payload.get("directory")}
                 elif action == "query":
                     current_tool_name_to_call = "query_files_in_memory"
                     current_tool_params_to_call = {"query": payload.get("query")}
+                elif action == "execute_plan":
+                    current_tool_name_to_call = "execute_plan"
+                    current_tool_params_to_call = {"plan": payload.get("plan")}
                 else:
                     await websocket.send_json({"type": "error", "message": f"Ação desconhecida: '{action}'"})
                     continue
@@ -202,15 +228,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 try:
-                    tool_output_parts = await client.call_tool(current_tool_name_to_call, current_tool_params_to_call, log_handler=websocket_log_handler)
+                    tool_output_parts = await client.call_tool(
+                        current_tool_name_to_call, 
+                        current_tool_params_to_call
+                    ) # <-- SEM o argumento 'log_handler'
+                    
                     raw_tool_output_text = tool_output_parts[0].text if tool_output_parts and tool_output_parts[0].text else "{}"
                     final_result_data = json.loads(raw_tool_output_text)
                     
                     result_type = "query_result" if action == "query" else "result"
-                    await websocket.send_json({"type": result_type, "data": final_result_data})
+                    if current_tool_name_to_call == "organize_directory" and final_result_data.get("status") == "plan_generated":
+                        await websocket.send_json({"type": "plan_result", "data": final_result_data["plan"]})
+                    else:
+                        await websocket.send_json({"type": result_type, "data": final_result_data})
 
                 except Exception as e:
-                    await websocket_log_handler(f"Ocorreu um erro crítico: {e}", "error")
+                    # O log de erro agora é automático por causa do patch!
                     await websocket.send_json({"type": "error", "message": f"Ocorreu um erro ao executar '{action}': {e}"})
 
     except WebSocketDisconnect:
@@ -224,3 +257,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "message": error_msg})
         except Exception:
             pass # Ignora erros se o websocket já estiver fechado
+    finally:
+        # 4. ESSENCIAL: Restaurar o método de log original
+        Context.log = original_log_method
+        # Desconecta o cliente se ele ainda estiver na lista
+        manager.disconnect(websocket)

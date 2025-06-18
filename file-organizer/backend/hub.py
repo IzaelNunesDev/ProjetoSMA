@@ -7,14 +7,13 @@ from rich.prompt import Confirm
 
 # Importa as FUNÇÕES dos agentes diretamente
 from agents.scanner_agent import scan_directory, summarize_scan_results
-from agents.planner_agent import create_organization_plan
+# --- NOVOS IMPORTS ---
+from agents.categorizer_agent import categorize_items
+from agents.planner_agent import build_plan_from_categorization
+# --------------------
 from agents.executor_agent import create_folder, move_file, move_folder
-# --- NOVA IMPORTAÇÃO PARA CORRIGIR BUG CRÍTICO ---
 from agents.suggestion_agent import suggest_file_move
-# -------------------------------------------------
-# --- NOVAS IMPORTAÇÕES DO HIVE MIND ---
 from agents.memory_agent import index_directory, query_memory, post_memory_experience, get_feed_for_agent
-# ------------------------------------
 from agents.maintenance_agent import find_empty_folders
 
 
@@ -27,111 +26,98 @@ async def organize_directory(
     directory_path: str,
     user_goal: str,
     ctx: Context,
-    auto_approve: bool = False
+    auto_approve: bool = False,
+    dry_run: bool = False
 ):
     """
-    Orquestra o processo completo de organização de um diretório usando sumarização para escalabilidade.
+    Orquestra o processo de organização em duas fases: Categorização e Construção do Plano.
     """
     try:
         root_dir = Path(directory_path).expanduser().resolve()
-        await ctx.log(f"Iniciando organização para o diretório: '{root_dir}' com o objetivo: '{user_goal}'", level="info")
+        await ctx.log(f"Iniciando organização para: '{root_dir}'", level="info")
 
-        # 1. Escanear (detalhado)
-        await ctx.log("🔍 Escaneando diretório (Passo 1/4)...", level="info")
+        # FASE 0: SCAN (sem mudanças)
+        await ctx.log("🔍 Passo 1/4: Escaneando diretório...", level="info")
         metadata_list = await scan_directory.fn(directory_path=directory_path, ctx=ctx)
-        
-        if not metadata_list:
-            msg = "Nenhum arquivo encontrado para organizar."
-            await ctx.log(msg, level="info")
-            return {"status": "success", "details": msg}
-        await ctx.log(f"✅ Análise detalhada concluída. {len(metadata_list)} arquivos encontrados.", level="info")
-        
-        # --- NOVA LÓGICA DE DECISÃO ---
-        # Analisa se o diretório é "plano" ou "estruturado"
-        parent_dirs = {str(Path(f['path']).parent) for f in metadata_list}
-        # Heurística: se há 2 ou menos diretórios pais (o raiz e talvez um subdiretório), trate como plano.
-        # O valor 2 é escolhido porque o próprio diretório raiz conta como um.
-        is_flat_directory = len(parent_dirs) <= 2
+        dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
+        loose_files_metadata = [f for f in metadata_list if str(Path(f['path']).parent) == str(root_dir)]
+        await ctx.log(f"✅ Scan concluído: {len(dir_summaries)} subpastas e {len(loose_files_metadata)} arquivos soltos.", level="info")
 
-        plan_object = None
-        if is_flat_directory:
-            # Cenário 2: Diretório plano, usar planejamento a nível de arquivo
-            await ctx.log("🧠 Diretório plano detectado. Criando um plano de organização detalhado (Passo 2/4)...", level="info")
-            plan_object = await create_organization_plan.fn(
-                directory_summaries=None,       # Não usamos resumos aqui
-                files_metadata=metadata_list,   # Enviamos a lista detalhada de arquivos
-                user_goal=user_goal,
-                root_directory=str(root_dir),
-                ctx=ctx
-            )
-        else:
-            # Cenário 1: Diretório estruturado, usar resumos (lógica atual)
-            # 2. Sumarizar
-            await ctx.log("📊 Sumarizando estrutura de diretórios (Passo 2/4)...", level="info")
-            dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
-            if not dir_summaries:
-                msg = "Não foi possível gerar um resumo da estrutura do diretório."
-                await ctx.log(msg, level="warning")
-                return {"status": "warning", "details": msg}
-            await ctx.log(f"✅ Sumarização concluída. {len(dir_summaries)} diretórios resumidos.", level="info")
+        # FASE 1: CATEGORIZAR (Map)
+        await ctx.log("🧠 Passo 2/4: Categorizando itens com IA...", level="info")
+        categorization_map = await categorize_items.fn(
+            user_goal=user_goal,
+            root_directory=str(root_dir),
+            directory_summaries=dir_summaries,
+            loose_files_metadata=loose_files_metadata,
+            ctx=ctx
+        )
+        if not categorization_map:
+            msg = "Não foi possível gerar um mapa de categorização."
+            await ctx.log(msg, level="warning")
+            return {"status": "warning", "details": msg}
 
-            # 3. Planejar (com base no resumo)
-            await ctx.log("🧠 Criando um plano de organização global (Passo 3/4)...", level="info")
-            await ctx.log(f"Enviando para o planner os seguintes resumos: {json.dumps(dir_summaries, indent=2)}", level="debug")
-            plan_object = await create_organization_plan.fn(
-                directory_summaries=dir_summaries,
-                files_metadata=None, # Não usamos metadados de arquivos aqui
-                user_goal=user_goal,
-                root_directory=str(root_dir),
-                ctx=ctx
-            )
-        # --- FIM DA LÓGICA DE DECISÃO ---
-        
-        if not plan_object or not isinstance(plan_object, dict) or "steps" not in plan_object:
-             msg = "O agente de planejamento retornou um plano inválido ou não contém a chave 'steps'."
-             await ctx.log(msg, level="error")
-             await ctx.log(f"Resposta recebida do planner: {plan_object}", level="debug")
-             return {"status": "error", "details": msg}
-
-        plan = plan_object.get("steps", [])
-        
-        if not plan:
-            msg = "O plano gerado não contém ações."
-            await ctx.log(msg, level="info")
-            return {"status": "success", "details": msg}
+        # FASE 2: CONSTRUIR PLANO (Reduce)
+        await ctx.log("🛠️ Passo 3/4: Construindo plano de execução...", level="info")
+        plan_object = await build_plan_from_categorization.fn(
+            root_directory=str(root_dir),
+            categorization_map=categorization_map,
+            ctx=ctx
+        )
 
         await ctx.log("📝 Plano gerado:", level="info")
-        plan_details = "\n".join([f"  - {a.get('action', 'AÇÃO INDEFINIDA')}: {a.get('path') or a.get('from', 'N/A')}" for a in plan])
-        await ctx.log(plan_details, level="info")
+        if dry_run:
+            await ctx.log("🔹 Modo de simulação (dry run) ativado. Retornando plano para aprovação.", level="info")
+            return {"status": "plan_generated", "plan": plan_object}
 
         # 4. Executar o plano
-        await ctx.log("\n🚀 Executando o plano (Passo 4/4)...", level="info")
-        execution_summary = []
-        for action in plan:
-            action_type = action.get("action")
-            result = {}
-            
-            if action_type == "CREATE_FOLDER":
-                result = await create_folder.fn(path=action.get("path"), root_directory=directory_path, ctx=ctx)
-            elif action_type == "MOVE_FILE":
-                result = await move_file.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
-            elif action_type == "MOVE_FOLDER":
-                # O destino para shutil.move é a pasta PAI, não o caminho completo final
-                # O 'to' do LLM é o diretório de destino, então está correto.
-                result = await move_folder.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=directory_path, ctx=ctx)
-            else:
-                result = {"status": "skipped", "details": f"Ação desconhecida: {action_type}"}
-            
-            execution_summary.append(result)
-            if result.get("status") == "error":
-                await ctx.log(f"❌ Falha na ação: {result.get('details')}", level="error")
-                break
-        
-        await ctx.log("\n✨ Organização finalizada! ✨", level="info")
-        return {"status": "success", "summary": execution_summary}
+        await ctx.log("⚡ Executando plano de organização (Passo 4/4)...", level="info")
+        execution_results = await execute_plan.fn(
+            plan=plan_object,
+            ctx=ctx
+        )
+
+        return {
+            "status": "completed",
+            "plan": plan_object,
+            "execution_results": execution_results
+        }
 
     except Exception as e:
         error_message = f"Ocorreu um erro crítico durante a organização: {e}"
+        await ctx.log(error_message, level="error")
+        return {"status": "error", "details": error_message}
+
+@hub_mcp.tool
+async def execute_plan(plan: dict, ctx: Context) -> dict:
+    """
+    Executa um plano de organização previamente aprovado pelo usuário.
+    """
+    try:
+        steps = plan.get("steps", [])
+        root_directory = plan.get("root_directory")
+        
+        if not root_directory:
+            return {"status": "error", "details": "O plano não contém um 'root_directory'."}
+
+        await ctx.log(f"🚀 Executando plano aprovado para '{root_directory}'...", level="info")
+        execution_summary = []
+        for action in steps:
+            action_type = action.get("action")
+            result = await execute_planned_action.fn(
+                action=action,
+                root_directory=root_directory,
+                ctx=ctx
+            )
+            execution_summary.append(result)
+            if result.get("status") == "error":
+                await ctx.log(f"❌ Falha na ação, interrompendo execução: {result.get('details')}", level="error")
+                break
+        
+        await ctx.log("\n✨ Execução do plano finalizada! ✨", level="info")
+        return {"status": "success", "summary": execution_summary}
+    except Exception as e:
+        error_message = f"Ocorreu um erro crítico durante a execução do plano: {e}"
         await ctx.log(error_message, level="error")
         console.print_exception()
         return {"status": "error", "details": error_message}
@@ -141,6 +127,7 @@ hub_mcp.add_tool(post_memory_experience)
 hub_mcp.add_tool(get_feed_for_agent)
 # Adiciona a ferramenta correta para sugestão de movimento de arquivo
 hub_mcp.add_tool(suggest_file_move)
+hub_mcp.add_tool(execute_plan)
 
 @hub_mcp.tool
 async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:

@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const maintenanceActionSelect = document.getElementById('maintenance_action_select');
     const dirInputMaintenance = document.getElementById('dir_input_maintenance');
     const submitButton = document.getElementById('submit_button');
+    const dryRunCheckbox = document.getElementById('dry_run_checkbox');
 
     let watchedDirectory = ''; // Armazena o diretório monitorado
 
@@ -97,12 +98,54 @@ function displaySuggestion(suggestion) {
     });
 }
 
+function displayPlanForApproval(plan) {
+    const planId = `plan-${Date.now()}`;
+    const card = document.createElement('div');
+    card.classList.add('suggestion-card'); // Reutilizar o estilo do card
+    card.id = planId;
+
+    let stepsHtml = plan.steps.map(step => 
+        `<li><strong>${step.action}:</strong> <code>${step.path || step.from}</code> ${step.to ? '<strong>→</strong> <code>' + step.to + '</code>' : ''}</li>`
+    ).join('');
+
+    card.innerHTML = `
+        <div class="suggestion-header">📋 Plano de Organização Proposto</div>
+        <div class="suggestion-body">
+            <p><strong>Objetivo:</strong> ${plan.objective}</p>
+            <p><strong>Ações Propostas:</strong></p>
+            <ul style="max-height: 200px; overflow-y: auto; background: #1a1a1a; padding: 10px; border-radius: 4px;">${stepsHtml}</ul>
+        </div>
+        <div class="suggestion-actions">
+            <button class="approve-btn">Executar Plano</button>
+            <button class="decline-btn">Cancelar</button>
+        </div>
+    `;
+    messages.appendChild(card);
+    messages.scrollTop = messages.scrollHeight;
+
+    card.querySelector('.approve-btn').addEventListener('click', () => {
+        ws.send(JSON.stringify({
+            action: 'execute_plan',
+            plan: plan
+        }));
+        addMessageToChat('user', `Aprovado plano de organização.`);
+        card.remove();
+        setFormEnabled(false); // Desabilitar form enquanto executa
+    });
+
+    card.querySelector('.decline-btn').addEventListener('click', () => {
+        addMessageToChat('user', 'Plano de organização cancelado.');
+        card.remove();
+        setFormEnabled(true); // Reabilitar o form
+    });
+}
+
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
         console.log("Received data:", data);
 
         // Reabilita o formulário ao receber resultado final, erro ou query
-        if (data.type === 'result' || data.type === 'query_result' || data.type === 'error') {
+        if (data.type === 'result' || data.type === 'query_result' || data.type === 'error' || data.type === 'plan_result') {
             setFormEnabled(true);
         }
 
@@ -131,6 +174,8 @@ function displaySuggestion(suggestion) {
             displaySuggestion(data.data);
         } else if (data.type === 'error') {
             addMessageToChat('agent', `❌ Erro: ${data.message}`);
+        } else if (data.type === 'plan_result') {
+            displayPlanForApproval(data.data);
         }
     };
 
@@ -167,11 +212,12 @@ function displaySuggestion(suggestion) {
         if (action === 'organize') {
             payload.directory = dirInputOrganize.value;
             payload.goal = goalInput.value;
+            payload.dry_run = dryRunCheckbox.checked; // Adicionar o novo parâmetro
             if (!payload.directory || !payload.goal) {
                 alert('Por favor, preencha o caminho do diretório e o objetivo.');
                 return;
             }
-            userMessage = `Organizar: "${payload.directory}"\nObjetivo: "${payload.goal}"`;
+            userMessage = `${payload.dry_run ? 'Simular Organização' : 'Organizar'}: "${payload.directory}"\nObjetivo: "${payload.goal}"`;
         } else if (action === 'index') {
             payload.directory = dirInputIndex.value;
             if (!payload.directory) {
