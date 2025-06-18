@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 from fastmcp import FastMCP, Context
-from gitingest.entrypoint import ingest_async
+from gitingest import ingest_async
 
 mcp = FastMCP(name="DigestAgent")
 

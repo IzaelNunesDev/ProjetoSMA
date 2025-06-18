@@ -15,4 +15,4 @@ watchdog==6.0.0
 chromadb
 pytesseract
 magika
-gitingest @ git+https://github.com/iza-br/gitingest.git
+gitingest
