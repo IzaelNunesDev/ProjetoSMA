@@ -12,7 +12,11 @@ DEFAULT_EXCLUDE = {
     "*.jpg", "*.jpeg", "*.png", "*.gif", "*.bmp", "*.tiff",
     "*.zip", "*.rar", "*.7z", "*.tar", "*.gz",
     "node_modules/**", "__pycache__/**", "venv/**", ".venv/**",
-    ".git/**", ".vscode/**", "target/**", "build/**", "dist/**"
+    ".git/**", ".vscode/**", "target/**", "build/**", "dist/**",
+    "Meus Documentos", "My Documents",
+    "Minhas Imagens", "My Pictures",
+    "Minhas Músicas", "My Music",
+    "Meus Vídeos", "My Videos"
 }
 
 @mcp.tool

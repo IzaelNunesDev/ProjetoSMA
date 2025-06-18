@@ -100,8 +100,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.type === 'log') {
             addMessageToChat('log', data.message, data.level);
         } else if (data.type === 'experimental_result') { 
+            // Primeiro, verifica se o backend retornou um erro
+            if (data.data.status === 'error') {
+                addMessageToChat('agent', `❌ Erro na análise experimental: ${data.data.details}`, 'error');
+                return;
+            }
+
             const result = data.data.result;
             const tree = data.data.tree;
+
+            // Verifica se o 'result' existe antes de tentar ler 'analysis'
+            if (!result) {
+                addMessageToChat('agent', `❌ Erro: A resposta da análise está mal formatada.`, 'error');
+                return;
+            }
+            
             let html = `<strong>Análise da Estrutura:</strong><p>${result.analysis}</p>`;
             if (result.suggestions && result.suggestions.length > 0) {
                 html += '<strong>Sugestões de Reorganização:</strong><ul>';

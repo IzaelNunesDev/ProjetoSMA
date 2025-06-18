@@ -157,18 +157,21 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
         return {"status": "error", "details": error_message}
 
 @hub_mcp.tool
-async def organize_experimental(directory_path: str, ctx: Context):
+async def organize_experimental(directory_path: str, ctx: Context) -> str:
     """
-    Executa o fluxo de organização experimental baseado na árvore de diretórios.
+    Executa o fluxo de organização experimental e retorna o resultado como uma string JSON.
     """
     await ctx.log(" Iniciando fluxo de organização experimental...", level="info")
     
     # Passo 1: Obter a árvore de diretórios
     tree_text = await get_tree_summary.fn(root_path=directory_path, ctx=ctx)
-    if not tree_text:
-        msg = "Falha ao gerar a estrutura de diretórios. Abortando."
+    
+    # --- NOVA VERIFICAÇÃO DE ERRO DO DIGEST AGENT ---
+    if not tree_text or tree_text.startswith("ERROR:"):
+        msg = f"Falha ao gerar a estrutura de diretórios. Detalhes: {tree_text}"
         await ctx.log(msg, level="error")
-        return {"status": "error", "details": msg}
+        # Retorna um JSON de erro para o frontend
+        return json.dumps({"status": "error", "details": msg})
     
     # Logar a árvore para a UI
     await ctx.log(f"Estrutura de diretórios detectada:\n{tree_text}", level="info")
@@ -177,11 +180,14 @@ async def organize_experimental(directory_path: str, ctx: Context):
     suggestions = await categorize_from_tree.fn(tree_text=tree_text, ctx=ctx)
     
     await ctx.log(" Análise concluída.", level="info")
-    return {
+    
+    # --- MUDANÇA PRINCIPAL: Serializar para JSON antes de retornar ---
+    result_payload = {
         "status": "completed",
         "tree": tree_text,
         "result": suggestions
     }
+    return json.dumps(result_payload)
 
 hub_mcp.add_tool(find_empty_folders)
 hub_mcp.add_tool(post_memory_experience)
