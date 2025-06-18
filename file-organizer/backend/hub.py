@@ -14,6 +14,8 @@ from agents.executor_agent import create_folder, move_file, move_folder
 from agents.suggestion_agent import suggest_file_move
 from agents.memory_agent import index_directory, query_memory, post_memory_experience, get_feed_for_agent
 from agents.maintenance_agent import find_empty_folders
+from agents.digest_agent import get_tree_summary
+from agents.tree_categorizer_agent import categorize_from_tree
 
 console = Console()
 hub_mcp = FastMCP(name="FileOrganizerHub")
@@ -154,11 +156,41 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
         console.print_exception()
         return {"status": "error", "details": error_message}
 
+@hub_mcp.tool
+async def organize_experimental(directory_path: str, ctx: Context):
+    """
+    Executa o fluxo de organização experimental baseado na árvore de diretórios.
+    """
+    await ctx.log(" Iniciando fluxo de organização experimental...", level="info")
+    
+    # Passo 1: Obter a árvore de diretórios
+    tree_text = await get_tree_summary.fn(root_path=directory_path, ctx=ctx)
+    if not tree_text:
+        msg = "Falha ao gerar a estrutura de diretórios. Abortando."
+        await ctx.log(msg, level="error")
+        return {"status": "error", "details": msg}
+    
+    # Logar a árvore para a UI
+    await ctx.log(f"Estrutura de diretórios detectada:\n{tree_text}", level="info")
+
+    # Passo 2: Obter sugestões do LLM com base na árvore
+    suggestions = await categorize_from_tree.fn(tree_text=tree_text, ctx=ctx)
+    
+    await ctx.log(" Análise concluída.", level="info")
+    return {
+        "status": "completed",
+        "tree": tree_text,
+        "result": suggestions
+    }
+
 hub_mcp.add_tool(find_empty_folders)
 hub_mcp.add_tool(post_memory_experience)
 hub_mcp.add_tool(get_feed_for_agent)
 hub_mcp.add_tool(suggest_file_move)
 hub_mcp.add_tool(execute_plan)
+hub_mcp.add_tool(get_tree_summary)
+hub_mcp.add_tool(categorize_from_tree)
+hub_mcp.add_tool(organize_experimental)
 
 @hub_mcp.tool
 async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:

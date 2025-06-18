@@ -1,0 +1,7 @@
+{
+  "name": "Tree Structure Categorizer",
+  "description": "Sugere movimentações de alto nível com base em uma árvore de diretórios textual.",
+  "version": "1.0",
+  "template_file": "template.md",
+  "input_variables": ["tree"]
+}

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Organizer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>File Organizer</h1>
+        
+        <div id="chat" class="chat"></div>
+        
+        <form id="action-form">
+            <select id="action">
+                <option value="organize">Organizar Arquivos (Padrão)</option>
+                <option value="organize_experimental">Organizar (Experimental Tree)</option>
+                <option value="index">Indexar Diretório</option>
+                <option value="query">Consultar Memória</option>
+                <option value="start_watching">Monitorar Diretório</option>
+                <option value="maintenance">Manutenção</option>
+            </select>
+            
+            <div id="organize_inputs" class="input-group hidden">
+                <input id="dir_input" type="text" placeholder="Caminho do diretório" autocomplete="off">
+                <input id="goal_input" type="text" placeholder="Objetivo da organização (opcional)" autocomplete="off">
+                <label>
+                    <input id="dry_run_input" type="checkbox">
+                    Simular (não mover arquivos)
+                </label>
+            </div>
+            
+            <div id="organize_experimental_inputs" class="input-group hidden">
+                <input id="dir_input_organize_experimental" type="text" placeholder="Caminho do diretório para analisar" autocomplete="off">
+            </div>
+            
+            <div id="query_inputs" class="input-group hidden">
+                <input id="query_input" type="text" placeholder="Sua consulta" autocomplete="off">
+            </div>
+            
+            <button type="submit">Executar</button>
+        </form>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

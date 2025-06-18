@@ -154,6 +154,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         "user_goal": payload.get("goal"),
                         "dry_run": payload.get("dry_run", False)
                     }
+                elif action == "organize_experimental":
+                    current_tool_name_to_call = "organize_experimental"
+                    current_tool_params_to_call = {"directory_path": payload.get("directory")}
                 elif action == "index":
                     current_tool_name_to_call = "index_directory"
                     current_tool_params_to_call = {"directory_path": payload.get("directory")}
@@ -182,7 +185,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     raw_tool_output_text = tool_output_parts[0].text if tool_output_parts and tool_output_parts[0].text else "{}"
                     final_result_data = json.loads(raw_tool_output_text)
                     
-                    if action == "organize" and final_result_data.get("status") == "plan_generated":
+                    if action == "organize_experimental":
+                        await websocket.send_json({"type": "experimental_result", "data": final_result_data})
+                    elif action == "organize" and final_result_data.get("status") == "plan_generated":
                         await websocket.send_json({"type": "plan_result", "data": final_result_data["plan"]})
                     elif action == "query":
                         await websocket.send_json({"type": "query_result", "data": final_result_data})

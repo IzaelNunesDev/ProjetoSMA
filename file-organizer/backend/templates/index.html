@@ -44,7 +44,8 @@
         <div id="messages"></div>
         <form id="form" onsubmit="return false;">
             <select id="action_select">
-                <option value="organize">Organizar Arquivos</option>
+                <option value="organize">Organizar Arquivos (Padrão)</option>
+                <option value="organize_experimental">Organizar (Experimental Tree)</option>
                 <option value="index">Indexar Diretório (Criar Memória)</option>
                 <option value="query">Consultar Memória</option>
                 <option value="start_watching">Monitorar Diretório (Proativo)</option>
@@ -58,6 +59,10 @@
                     <input type="checkbox" id="dry_run_checkbox" checked>
                     <label for="dry_run_checkbox">Apenas simular (ver plano antes de executar)</label>
                 </div>
+            </div>
+
+            <div id="organize_experimental_inputs" class="input-group hidden">
+                <input id="dir_input_organize_experimental" type="text" placeholder="Caminho do diretório para analisar" autocomplete="off">
             </div>
 
             <div id="index_inputs" class="input-group hidden">
