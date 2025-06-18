@@ -31,61 +31,94 @@ async def organize_directory(
     dry_run: bool = False
 ):
     """
-    Orquestra o processo de organização em duas fases: Categorização e Construção do Plano.
+    Orquestra o processo de organização, garantindo que o diretório raiz não seja movido.
     """
     try:
         root_dir = Path(dir_path).expanduser().resolve()
         await ctx.log(f"Iniciando organização para: '{root_dir}'", level="info")
 
-        # FASE 0: SCAN (sem mudanças)
-        await ctx.log("🔍 Passo 1/5: Escaneando diretório...", level="info")
-        metadata_list = await scan_directory.fn(directory_path=dir_path, ctx=ctx)
-        dir_summaries = await summarize_scan_results.fn(scan_results=metadata_list, ctx=ctx)
-        loose_files_metadata = [f for f in metadata_list if str(Path(f['path']).parent) == str(root_dir)]
-        await ctx.log(f"✅ Scan concluído: {len(dir_summaries)} subpastas e {len(loose_files_metadata)} arquivos soltos.", level="info")
+        # FASE 0: SCAN
+        await ctx.log(" Passo 1/5: Escaneando diretório...", level="info")
+        scan_results = await scan_directory.fn(directory_path=dir_path, ctx=ctx)
 
-        # Antes da FASE 1: CATEGORIZAR
-        await ctx.log("🧠 Passo 2/5: Aplicando regras de categorização rápida...", level="info")
-        all_items = dir_summaries + loose_files_metadata
-        rule_categorized_map, items_for_llm = await apply_categorization_rules(all_items)
-        await ctx.log(f"✅ {len(rule_categorized_map)} itens categorizados por regras.", level="info")
+        # Filtra subpastas, excluindo o próprio diretório raiz.
+        dir_summaries_all = await summarize_scan_results.fn(scan_results=scan_results, ctx=ctx)
+        dir_summaries = [s for s in dir_summaries_all if Path(s['path']).resolve() != root_dir]
+        
+        # Filtra arquivos soltos, garantindo que estão diretamente no diretório raiz.
+        loose_files_metadata = [f for f in scan_results if str(Path(f['path']).parent.resolve()) == str(root_dir)]
+        
+        await ctx.log(f" Scan concluído: {len(dir_summaries)} subpastas e {len(loose_files_metadata)} arquivos soltos encontrados para processar.", level="info")
+        
+        if not dir_summaries and not loose_files_metadata:
+            msg = "Nenhum item (subpastas ou arquivos soltos) encontrado dentro do diretório para organizar."
+            await ctx.log(msg, level="info")
+            return {"status": "completed", "message": msg, "plan": {}, "execution_results": []}
 
-        # FASE 2: CATEGORIZAR COM LLM (apenas os restantes)
-        await ctx.log("🧠 Passo 3/5: Categorizando itens restantes com IA...", level="info")
-        llm_categorized_map = await categorize_items.fn(
-            user_goal=user_goal,
-            root_directory=str(root_dir),
-            directory_summaries=dir_summaries,
-            loose_files_metadata=loose_files_metadata,
-            ctx=ctx
-        )
-        if not llm_categorized_map:
-            msg = "Não foi possível gerar um mapa de categorização."
+        # Antes da FASE 1: CATEGORIZAR com Regras
+        await ctx.log(" Passo 2/5: Aplicando regras de categorização rápida...", level="info")
+        all_items_to_process = dir_summaries + loose_files_metadata
+        
+        # --- CORREÇÃO DA CHAMADA DA FUNÇÃO ---
+        # Chamada direta para a função async, sem .fn e sem ctx
+        rule_categorized_map, items_for_llm_metadata = await apply_categorization_rules(items=all_items_to_process)
+        # --- FIM DA CORREÇÃO ---
+
+        await ctx.log(f" {len(rule_categorized_map)} itens categorizados por regras.", level="info")
+
+        llm_categorized_map = {}
+        if items_for_llm_metadata:
+            # FASE 2: CATEGORIZAR com LLM
+            await ctx.log(f" Passo 3/5: Categorizando {len(items_for_llm_metadata)} itens restantes com IA...", level="info")
+            
+            items_for_llm_dirs = [item for item in items_for_llm_metadata if Path(item['path']).is_dir()]
+            items_for_llm_files = [item for item in items_for_llm_metadata if Path(item['path']).is_file()]
+
+            llm_categorized_map = await categorize_items.fn(
+                user_goal=user_goal,
+                root_directory=str(root_dir),
+                directory_summaries=items_for_llm_dirs,
+                loose_files_metadata=items_for_llm_files,
+                ctx=ctx
+            )
+        else:
+            await ctx.log(" Passo 3/5: Nenhum item restante para categorização com IA.", level="info")
+
+        categorization_map = {**rule_categorized_map, **llm_categorized_map}
+        
+        if not categorization_map:
+            msg = "Não foi possível gerar um mapa de categorização. Nenhum item foi categorizado."
             await ctx.log(msg, level="warning")
             return {"status": "warning", "details": msg}
 
-        # Combinar os resultados
-        categorization_map = {**rule_categorized_map, **llm_categorized_map}
-
-        # FASE 3: CONSTRUIR PLANO (Reduce)
-        await ctx.log("🛠️ Passo 4/5: Construindo plano de execução...", level="info")
+        # FASE 3: CONSTRUIR PLANO
+        await ctx.log(" Passo 4/5: Construindo plano de execução...", level="info")
         plan_object = await build_plan_from_categorization.fn(
             root_directory=str(root_dir),
             categorization_map=categorization_map,
             ctx=ctx
         )
 
-        await ctx.log("📝 Plano gerado:", level="info")
+        await ctx.log(" Plano gerado:", level="info")
         if dry_run:
-            await ctx.log("🔹 Modo de simulação (dry run) ativado. Retornando plano para aprovação.", level="info")
+            await ctx.log(" Modo de simulação (dry run) ativado. Retornando plano para aprovação.", level="info")
             return {"status": "plan_generated", "plan": plan_object}
 
         # 5. Executar o plano
-        await ctx.log("⚡ Executando plano de organização (Passo 5/5)...", level="info")
+        await ctx.log(" Executando plano de organização (Passo 5/5)...", level="info")
         execution_results = await execute_plan.fn(
             plan=plan_object,
             ctx=ctx
         )
+
+        # Adicionar o registro da experiência de organização ao Hive Mind
+        async with Client(hub_mcp) as client:
+            await client.call_tool('post_memory_experience', {
+                'experience': f"Organização concluída para o diretório '{root_dir}' com o objetivo '{user_goal}'. {len(plan_object.get('steps', []))} ações executadas.",
+                'tags': ['organization', 'execution', 'completed'],
+                'source_agent': 'FileOrganizerHub',
+                'reward': 0.5 # Recompensa neutra/positiva por completar uma tarefa
+            })
 
         return {
             "status": "completed",
@@ -110,7 +143,7 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
         if not root_directory:
             return {"status": "error", "details": "O plano não contém um 'root_directory'."}
 
-        await ctx.log(f"🚀 Executando plano aprovado para '{root_directory}'...", level="info")
+        await ctx.log(f" Executando plano aprovado para '{root_directory}'...", level="info")
         execution_summary = []
         for action in steps:
             action_type = action.get("action")
@@ -121,10 +154,10 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
             )
             execution_summary.append(result)
             if result.get("status") == "error":
-                await ctx.log(f"❌ Falha na ação, interrompendo execução: {result.get('details')}", level="error")
+                await ctx.log(f" Falha na ação, interrompendo execução: {result.get('details')}", level="error")
                 break
         
-        await ctx.log("\n✨ Execução do plano finalizada! ✨", level="info")
+        await ctx.log("\n Execução do plano finalizada! ", level="info")
         return {"status": "success", "summary": execution_summary}
     except Exception as e:
         error_message = f"Ocorreu um erro crítico durante a execução do plano: {e}"

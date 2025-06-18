@@ -74,7 +74,7 @@ function displaySuggestion(suggestion) {
             <p><strong>Para:</strong> <code>${suggestion.to}</code></p>
         </div>
         <div class="suggestion-actions">
-            <button class="approve-btn">Aprovar</button>
+            <button class="approve-btn">Aprovar e Mover</button>
             <button class="decline-btn">Recusar</button>
         </div>
     `;
@@ -82,18 +82,39 @@ function displaySuggestion(suggestion) {
     messages.appendChild(card);
     messages.scrollTop = messages.scrollHeight;
 
+    // Ação de Aprovar - AGORA CHAMA A API REST
     card.querySelector('.approve-btn').addEventListener('click', () => {
-        // Envia a aprovação de volta para o servidor
-        ws.send(JSON.stringify({
-            action: 'approve_suggestion',
-            suggestion: suggestion 
-        }));
-        addMessageToChat('user', `Aprovada sugestão para mover ${suggestion.from.split('\\').pop()}.`);
+        fetch('/api/suggestion/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(suggestion)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if(data.status === 'approved') {
+                addMessageToChat('log', `Ação aprovada. Arquivo movido para ${suggestion.to}`, 'info');
+            } else {
+                addMessageToChat('log', `Falha ao aprovar sugestão.`, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error approving suggestion:', error);
+            addMessageToChat('log', `Erro na comunicação com o servidor.`, 'error');
+        });
+
+        addMessageToChat('user', `Aprovada sugestão para mover ${suggestion.from.split(/[\\/]/).pop()}.`);
         card.remove();
     });
 
+    // Ação de Recusar - AGORA CHAMA A API REST
     card.querySelector('.decline-btn').addEventListener('click', () => {
-        addMessageToChat('user', `Recusada sugestão para ${suggestion.from.split('\\').pop()}.`);
+        fetch('/api/suggestion/reject', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(suggestion)
+        });
+        
+        addMessageToChat('user', `Recusada sugestão para ${suggestion.from.split(/[\\/]/).pop()}.`);
         card.remove();
     });
 }
