@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const ws = new WebSocket(`ws://${window.location.host}/ws`);
 
-    // As funções de display e addMessageToChat não precisam de alteração
+    // Funções de display e addMessageToChat (sem mudanças)...
     function addMessageToChat(type, content, level = 'info', contentType = 'text') {
         const messagesContainer = messages;
         const messageDiv = document.createElement('div');
@@ -42,8 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
             logDiv.textContent = content;
             logDiv.style.color = level === 'error' ? '#ff6b6b' : (level === 'warning' ? '#f9ca24' : '#aaa');
             messagesContainer.appendChild(logDiv);
-            messageDiv.appendChild(logDiv); // Corrigido para adicionar dentro da div da mensagem
-            return; // Evita adicionar a div da mensagem duas vezes
+            messageDiv.appendChild(logDiv);
+            return;
         } else if (type === 'query_result') {
              contentDiv.innerHTML = `<strong>Resposta:</strong><p>${content.answer}</p><p><small>Fontes: ${content.source_files.join(', ') || 'N/A'}</small></p>`;
         } else if (type === 'agent' && typeof content === 'object' && content.data) {
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesContainer.appendChild(messageDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
-
+    
     function displayPlanForApproval(plan) {
         const planId = `plan-${Date.now()}`;
         const card = document.createElement('div');
@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setFormEnabled(true);
         });
     }
-    
+
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
         console.log("Received data:", data);
@@ -115,9 +115,20 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '<strong>Estrutura Analisada:</strong><pre style="background-color: #2a2a2a; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;">' + tree + '</pre>';
             addMessageToChat('agent', { message: '✅ Análise Experimental Concluída', data: html }, 'info', 'html');
         } else if (data.type === 'plan_result') {
-            displayPlanForApproval(data.data.plan);
+            displayPlanForApproval(data.data);
         } else if (data.type === 'error') {
             addMessageToChat('agent', `❌ Erro: ${data.message}`, 'error'); 
+        } else if (data.data && data.data.summary) { // Resposta do organize padrão
+             let formattedResult = '<strong>Resumo da Organização:</strong><ul style="list-style-type: none; padding-left: 0;">';
+             data.data.summary.forEach(item => {
+                 if (item.status === 'success') {
+                     formattedResult += `<li>✔️ [${item.action||''}] ${item.path || item.from} movido/criado com sucesso.</li>`;
+                 } else {
+                     formattedResult += `<li style="color: #ff6b6b;">❌ [${item.action||''}] Falha: ${item.details}</li>`;
+                 }
+             });
+             formattedResult += '</ul>';
+             addMessageToChat('agent', { message: '✅ Operação concluída!', data: formattedResult }, 'info', 'html');
         } else {
              addMessageToChat('agent', { message: '✅ Operação concluída!', data: data.data });
         }

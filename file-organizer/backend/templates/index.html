@@ -11,7 +11,7 @@
         .message { margin-bottom: 15px; display: flex; flex-direction: column; }
         .message.user { align-items: flex-end; }
         .message.agent { align-items: flex-start; }
-        .message .content { max-width: 70%; padding: 10px 15px; border-radius: 18px; line-height: 1.5; }
+        .message .content { max-width: 70%; padding: 10px 15px; border-radius: 18px; line-height: 1.5; word-wrap: break-word; }
         .message.user .content { background-color: #005fff; color: white; border-bottom-right-radius: 4px; }
         .message.agent .content { background-color: #333; color: #f1f1f1; border-bottom-left-radius: 4px; }
         .log-message { font-family: 'Courier New', Courier, monospace; font-size: 0.8em; color: #999; margin-top: 5px; white-space: pre-wrap; }
@@ -21,7 +21,6 @@
         button:hover { background-color: #005fff; }
         .input-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
         .hidden { display: none; }
-        /* Estilos para o card de sugestão */
         .suggestion-card { background-color: #2c2c2c; border-left: 4px solid #f9ca24; border-radius: 4px; padding: 15px; margin: 15px 0; animation: fadeIn 0.5s ease; }
         .suggestion-header { font-weight: bold; color: #f9ca24; margin-bottom: 10px; font-size: 1.1em; }
         .suggestion-body p { margin: 5px 0; }
@@ -37,7 +36,6 @@
 </head>
 <body>
     <div id="chat-container">
-        <!-- Adicione um cabeçalho com o link -->
         <div style="padding: 10px 20px; background-color: #252525; border-bottom: 1px solid #333; text-align: right;">
             <a href="/feed" target="_blank" style="color: #00aaff; text-decoration: none; font-weight: bold;">Ver Feed do Hive Mind ↗️</a>
         </div>
@@ -80,7 +78,6 @@
             <div id="maintenance_inputs" class="input-group hidden">
                 <select id="maintenance_action_select">
                     <option value="find_empty_folders">Encontrar Pastas Vazias</option>
-                    <!-- Outras ações de manutenção virão aqui -->
                 </select>
                 <input id="dir_input_maintenance" type="text" placeholder="Caminho do diretório para verificar" autocomplete="off">
             </div>
