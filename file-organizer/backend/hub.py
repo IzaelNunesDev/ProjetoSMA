@@ -167,8 +167,8 @@ async def organize_experimental(directory_path: str, ctx: Context) -> str:
     tree_text = await get_tree_summary.fn(root_path=directory_path, ctx=ctx)
     
     # --- NOVA VERIFICAÇÃO DE ERRO DO DIGEST AGENT ---
-    if not tree_text or tree_text.startswith("ERROR:"):
-        msg = f"Falha ao gerar a estrutura de diretórios. Detalhes: {tree_text}"
+    if not tree_text:
+        msg = "Falha ao gerar a estrutura de diretórios. O diretório pode estar inacessível ou ocorreu um erro interno no scanner."
         await ctx.log(msg, level="error")
         # Retorna um JSON de erro para o frontend
         return json.dumps({"status": "error", "details": msg})
