@@ -18,24 +18,14 @@ class AsyncWatcherEventHandler(FileSystemEventHandler):
             asyncio.run_coroutine_threadsafe(self.callback(event.src_path), self.loop)
 
     def on_deleted(self, event):
-        """Handle file deletion events"""
         path = event.src_path
-        asyncio.create_task(
-            hub_mcp.call_tool(
-                'handle_file_deleted', 
-                path=path
-            )
-        )
+        coro = hub_mcp.call_tool('handle_file_deleted', path=path)
+        asyncio.run_coroutine_threadsafe(coro, self.loop)
     
     def on_modified(self, event):
-        """Handle file modification events"""
         path = event.src_path
-        asyncio.create_task(
-            hub_mcp.call_tool(
-                'handle_file_modified', 
-                path=path
-            )
-        )
+        coro = hub_mcp.call_tool('handle_file_modified', path=path)
+        asyncio.run_coroutine_threadsafe(coro, self.loop)
 
 def start_watcher_thread(directory_path: str, callback: Callable[[str], Awaitable[None]]) -> Observer:
     """Cria e inicia um observador em uma thread, usando um callback assíncrono."""

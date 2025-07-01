@@ -1,5 +1,6 @@
 # file-organizer/backend/hub.py
 
+import asyncio
 import json
 from pathlib import Path
 from fastmcp import FastMCP, Context, Client
@@ -150,17 +151,18 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
 
         await ctx.log(f" Executando plano aprovado para '{root_directory}'...", level="info")
         execution_summary = []
-        for action in steps:
-            action_type = action.get("action")
-            result = await client.call_tool('execute_planned_action', {
-                'action': action,
-                'root_directory': root_directory,
-                'ctx': ctx
-            })
-            execution_summary.append(result)
-            if result.get("status") == "error":
-                await ctx.log(f" Falha na ação, interrompendo execução: {result.get('details')}", level="error")
-                break
+        async with Client(hub_mcp) as client:
+            for action in steps:
+                action_type = action.get("action")
+                result = await client.call_tool('execute_planned_action', { # Usar o client definido
+                    'action': action,
+                    'root_directory': root_directory,
+                    'ctx': ctx
+                })
+                execution_summary.append(result)
+                if result.get("status") == "error":
+                    await ctx.log(f" Falha na ação, interrompendo execução: {result.get('details')}", level="error")
+                    break
         
         await ctx.log("\n Execução do plano finalizada! ", level="info")
         return {"status": "success", "summary": execution_summary}
@@ -222,6 +224,26 @@ async def execute_planned_action(action: dict, root_directory: str, ctx: Context
             msg = f"Tipo de ação desconhecido: {action_type}"
             await ctx.log(msg, level="error")
             return {"status": "error", "details": msg}
+
+@hub_mcp.tool
+async def handle_file_deleted(path: str, ctx: Context) -> dict:
+    """
+    Lida com o evento de arquivo deletado, removendo-o do índice de memória.
+    """
+    await ctx.log(f"Arquivo deletado detectado: {path}. Removendo do índice de memória...", level="info")
+    async with Client(hub_mcp) as client:
+        result = await client.call_tool_fn('remove_from_memory_index', path=path)
+    return result
+
+@hub_mcp.tool
+async def handle_file_modified(path: str, ctx: Context) -> dict:
+    """
+    Lida com o evento de arquivo modificado, atualizando-o no índice de memória.
+    """
+    await ctx.log(f"Arquivo modificado detectado: {path}. Atualizando no índice de memória...", level="info")
+    async with Client(hub_mcp) as client:
+        result = await client.call_tool_fn('update_memory_index', path=path)
+    return result
 
 hub_mcp.add_tool(create_folder)
 hub_mcp.add_tool(move_file)

@@ -157,7 +157,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         example_file_contents = ""
                         if user_goal:
                             # Regex para encontrar padrões @caminho
-                            matches = re.findall(r'@([\w\-/\\.]+)', user_goal)
+                            matches = re.findall(r'@([\w\s\-/\.]+)', user_goal)
                             contents = []
                             for match in matches:
                                 file_path = Path(match)
@@ -190,8 +190,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         current_tool_name_to_call = "query_files_in_memory"
                         current_tool_params_to_call = {"query": payload.get("query")}
                     elif action == "execute_plan":
-                        current_tool_name_to_call = "execute_plan"
-                        current_tool_params_to_call = {"plan": payload.get("plan")}
+    current_tool_name_to_call = "execute_plan"
+    current_tool_params_to_call = {"plan": payload.get("plan")}
+elif action == "maintenance":
+    sub_action = payload.get("sub_action")
+    directory = payload.get("directory")
+    if sub_action == "find_empty_folders":
+        current_tool_name_to_call = "find_empty_folders"
+        current_tool_params_to_call = {"directory_path": directory}
+    else:
+        await websocket.send_json({"type": "error", "message": f"Sub-ação de manutenção desconhecida: '{sub_action}'"})
+        continue
                     else:
                         await websocket.send_json({"type": "error", "message": f"Ação desconhecida: '{action}'"})
                         continue
@@ -201,10 +210,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     try:
-                        tool_output_parts = await client.call_tool(
-                            current_tool_name_to_call, 
-                            current_tool_params_to_call
-                        )
+                        ctx = Context(log_fn=lambda msg, level: websocket_log_handler(message=msg, level=level))
+        current_tool_params_to_call['ctx'] = ctx
+
+        try:
+            tool_output_parts = await client.call_tool(
+                current_tool_name_to_call,
+                current_tool_params_to_call
+            )
                         final_result_data = tool_output_parts.structured_content
                         
                         if action == "organize_experimental":

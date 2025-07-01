@@ -279,3 +279,75 @@ async def update_entry_score(entry_id: str, score_delta: float, ctx: Context = N
         return {"status": "success", "entry_id": entry_id, "new_utility_score": new_score}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@mcp.tool
+async def remove_from_memory_index(path: str, ctx: Context) -> dict:
+    """
+    Remove um arquivo do índice de memória.
+    """
+    try:
+        file_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, path))
+        hive_mind_collection.delete(ids=[file_id])
+        await ctx.log(f"Arquivo {path} removido do índice de memória.", level="info")
+        return {"status": "success", "message": f"Arquivo {path} removido."}
+    except Exception as e:
+        await ctx.log(f"Falha ao remover arquivo {path} do índice de memória: {e}", level="error")
+        return {"status": "error", "message": str(e)}
+
+@mcp.tool
+async def update_memory_index(path: str, ctx: Context) -> dict:
+    """
+    Atualiza um arquivo no índice de memória (re-indexa).
+    """
+    await ctx.log(f"Atualizando arquivo no índice de memória: {path}", level="info")
+    try:
+        # Re-scan the single file to get its latest metadata and content
+        # This is a simplified approach; a more robust solution might involve
+        # a dedicated single-file scanner or direct content reading.
+        # For now, we'll simulate by calling scan_directory on its parent
+        # and filtering for the specific file.
+        
+        # Temporarily disable force_rescan to avoid re-scanning the whole directory
+        # if it's not necessary. We only care about this specific file.
+        parent_dir = str(Path(path).parent)
+        files_metadata = await scan_directory.fn(directory_path=parent_dir, ctx=ctx, force_rescan=True)
+        
+        target_file_metadata = next((f for f in files_metadata if f['path'] == path), None)
+
+        if not target_file_metadata or not target_file_metadata.get("content_summary"):
+            msg = f"Arquivo {path} não encontrado ou sem conteúdo extraível para atualização."
+            await ctx.log(msg, level="warning")
+            return {"status": "warning", "message": msg}
+
+        content_to_embed = f"Arquivo: {target_file_metadata['name']}\nCaminho: {target_file_metadata['path']}\nResumo do Conteúdo:\n{target_file_metadata['content_summary']}"
+        
+        result = await genai.embed_content_async(
+            model="models/text-embedding-004",
+            content=content_to_embed,
+            task_type="RETRIEVAL_DOCUMENT"
+        )
+        embedding = result['embedding']
+
+        file_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, path))
+        
+        metadatas = {
+            "path": target_file_metadata["path"],
+            "name": target_file_metadata["name"],
+            "source": "scanner_agent",
+            "tags": json.dumps(["index", "scan", target_file_metadata["ext"].lstrip('.')]),
+            "timestamp": target_file_metadata["modified_at"]
+        }
+
+        hive_mind_collection.upsert(
+            ids=[file_id],
+            embeddings=[embedding],
+            metadatas=[metadatas],
+            documents=[content_to_embed]
+        )
+        
+        await ctx.log(f"Arquivo {path} atualizado no índice de memória.", level="info")
+        return {"status": "success", "message": f"Arquivo {path} atualizado."}
+
+    except Exception as e:
+        await ctx.log(f"Falha ao atualizar arquivo {path} no índice de memória: {e}", level="error")
+        return {"status": "error", "message": str(e)}

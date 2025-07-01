@@ -16,3 +16,4 @@ chromadb
 pytesseract
 magika
 gitingest
+gitpython
