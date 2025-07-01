@@ -4,7 +4,7 @@ python-dotenv
 PyMuPDF
 Pillow>=10.0.0
 rich
-typer
+
 fastapi
 uvicorn
 python-multipart

@@ -4,7 +4,7 @@ import uuid
 import json
 import numpy as np
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, TypedDict, Optional
 import google.generativeai as genai
 from fastmcp import FastMCP, Context
 from agents.scanner_agent import scan_directory
@@ -28,6 +28,17 @@ hive_mind_collection = client.get_or_create_collection(
 )
 
 mcp = FastMCP(name="MemoryAgent")
+
+class MemoryEntry(TypedDict):
+    entry_id: str             # UUID único para cada postagem
+    agent_name: str           # ex: "CategorizerAgent", "UserInteraction"
+    entry_type: str           # "INSIGHT", "ALERT", "SUGGESTION", "ACTION_RESULT"
+    timestamp: str            # ISO format
+    content: str              # O texto da postagem: "Sugiro mover X para Y"
+    context: dict             # { "directory": "/path/to/dir", "file_ext": ".pdf" }
+    tags: List[str]
+    utility_score: float      # Começa em 0, modificado por feedback
+    references_entry_id: Optional[str] # Para "comentários" ou "respostas"
 
 @mcp.tool
 async def index_directory(directory_path: str, ctx: Context, force_rescan: bool = False) -> dict:
@@ -91,50 +102,53 @@ async def index_directory(directory_path: str, ctx: Context, force_rescan: bool 
         raise
 
 @mcp.tool
-async def query_memory(query: str, ctx: Context) -> dict:
+async def query_memory(query: str = "", ctx: Context = None, agent_name: str = None, entry_type: str = None, tags: List[str] = None, top_k: int = 5) -> dict:
     """
-    Responde a uma pergunta consultando o ChromaDB.
+    Consulta o HiveMind por similaridade semântica e/ou filtros estruturados (agente, tipo, tags), ordenando por utility_score.
     """
-    await ctx.log(f"Recebida a consulta: '{query}'", level="info")
-
-    normalized_query = query.lower().strip()
-    count_keywords = ["quantos arquivos", "numero de arquivos", "total de arquivos"]
-    if any(keyword in normalized_query for keyword in count_keywords):
-        count = hive_mind_collection.count()
-        answer = f"Atualmente, há {count} arquivo(s) indexado(s) na memória persistente."
-        return {"answer": answer, "source_files": ["System Memory"]}
-
+    await ctx.log(f"Consulta HiveMind: '{query}' | agent_name={agent_name} | entry_type={entry_type} | tags={tags}", level="info")
     if hive_mind_collection.count() == 0:
-        return {"answer": "A memória está vazia. Por favor, indexe um diretório primeiro.", "source_files": []}
+        return {"results": []}
 
-    query_embedding_result = await genai.embed_content_async(
-        model="models/text-embedding-004",
-        content=query,
-        task_type="RETRIEVAL_QUERY"
-    )
-    query_embedding = query_embedding_result['embedding']
+    # Busca semântica se query fornecida
+    if query:
+        query_embedding_result = await genai.embed_content_async(
+            model="models/text-embedding-004",
+            content=query,
+            task_type="RETRIEVAL_QUERY"
+        )
+        query_embedding = query_embedding_result['embedding']
+        results = hive_mind_collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k*2  # buscar mais para filtrar depois
+        )
+        metadatas = results['metadatas'][0]
+    else:
+        # Busca todos para filtrar
+        all_results = hive_mind_collection.get(include=["metadatas"])
+        metadatas = all_results['metadatas']
 
-    results = hive_mind_collection.query(
-        query_embeddings=[query_embedding],
-        n_results=3
-    )
+    # Filtros estruturados
+    filtered = []
+    for meta in metadatas:
+        if agent_name and meta.get('agent_name') != agent_name:
+            continue
+        if entry_type and meta.get('entry_type') != entry_type:
+            continue
+        if tags:
+            meta_tags = meta.get('tags', [])
+            if isinstance(meta_tags, str):
+                try:
+                    meta_tags = json.loads(meta_tags)
+                except Exception:
+                    meta_tags = [meta_tags]
+            if not any(tag in meta_tags for tag in tags):
+                continue
+        filtered.append(meta)
 
-    if not results['documents'] or not results['documents'][0]:
-        return {"answer": "Não consegui encontrar informações relevantes para responder.", "source_files": []}
-
-    context_chunks = results['documents'][0]
-    source_files = set(meta['name'] for meta in results['metadatas'][0])
-    context_str = "\n---\n".join(context_chunks)
-
-    prompt = prompt_manager.format_prompt(
-        task_name="query-memory",
-        context_str=context_str,
-        query=query
-    )
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = await model.generate_content_async(prompt)
-    
-    return {"answer": response.text, "source_files": list(source_files)}
+    # Ranking por utility_score
+    filtered.sort(key=lambda m: m.get('utility_score', 0), reverse=True)
+    return {"results": filtered[:top_k]}
 
 @mcp.tool
 async def post_memory_experience(experience: str, tags: List[str], source_agent: str, ctx: Context, reward: float = 0.0) -> dict:
@@ -183,8 +197,13 @@ async def get_feed_for_agent(tags_of_interest: List[str] = None, top_k: int = 50
     if hive_mind_collection.count() == 0:
         return []
 
-    # O filtro 'where' do ChromaDB é limitado e não suporta '$in' diretamente para strings JSON.
-    # Portanto, recuperamos todos e filtramos na memória, o que é aceitável para um feed.
+    # NOTA DE ESCALABILIDADE: O filtro 'where' do ChromaDB não suporta consultas complexas
+    # como verificar se um item de uma lista está contido em uma string JSON.
+    # A abordagem atual recupera todos os metadados e filtra na memória.
+    # Isso é aceitável para dezenas de milhares de itens, mas pode se tornar um
+    # gargalo de desempenho com um volume de memória muito maior.
+    # Uma solução futura poderia envolver uma estrutura de metadados diferente ou
+    # uma consulta mais granular se a API do ChromaDB evoluir.
     results = hive_mind_collection.get(include=["metadatas"])
     
     all_metadatas = results['metadatas']
@@ -213,3 +232,50 @@ async def get_feed_for_agent(tags_of_interest: List[str] = None, top_k: int = 50
     sorted_feed = sorted(feed_items, key=lambda x: x.get("timestamp", ""), reverse=True)
     
     return sorted_feed[:top_k]
+
+@mcp.tool
+async def post_entry(entry: MemoryEntry, ctx: Context) -> dict:
+    """
+    Armazena uma entrada completa do HiveMind (MemoryEntry) como vetor na memória compartilhada (ChromaDB).
+    """
+    try:
+        await ctx.log(f"HiveMind: Registrando entrada de '{entry['agent_name']}' tipo {entry['entry_type']} com tags {entry['tags']}", level="debug")
+        result = await genai.embed_content_async(
+            model="models/text-embedding-004",
+            content=entry['content'],
+            task_type="RETRIEVAL_DOCUMENT"
+        )
+        embedding = result['embedding']
+        # Todos os campos do MemoryEntry vão para metadados
+        metadata = dict(entry)
+        hive_mind_collection.upsert(
+            ids=[entry['entry_id']],
+            embeddings=[embedding],
+            metadatas=[metadata],
+            documents=[entry['content']]
+        )
+        return {"status": "success", "message": "Entrada registrada no HiveMind.", "entry_id": entry['entry_id']}
+    except Exception as e:
+        error_msg = f"Falha ao postar entrada no HiveMind: {e}"
+        await ctx.log(error_msg, level="error")
+        return {"status": "error", "message": error_msg}
+
+@mcp.tool
+async def update_entry_score(entry_id: str, score_delta: float, ctx: Context = None) -> dict:
+    """
+    Atualiza o utility_score de uma entrada do HiveMind (MemoryEntry) pelo entry_id.
+    """
+    try:
+        # Buscar metadados atuais
+        result = hive_mind_collection.get(ids=[entry_id], include=["metadatas"])
+        if not result['metadatas'] or not result['metadatas'][0]:
+            return {"status": "error", "message": "Entrada não encontrada."}
+        meta = result['metadatas'][0]
+        current_score = meta.get('utility_score', 0)
+        new_score = current_score + score_delta
+        meta['utility_score'] = new_score
+        # Atualizar metadados no ChromaDB
+        hive_mind_collection.update(ids=[entry_id], metadatas=[meta])
+        return {"status": "success", "entry_id": entry_id, "new_utility_score": new_score}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

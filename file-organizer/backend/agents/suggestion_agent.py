@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 from fastmcp import FastMCP, Context
 from agents.scanner_agent import scan_directory
-from agents.memory_agent import query_memory
+from agents.memory_agent import query_memory, post_entry, MemoryEntry
 from prompt_manager import prompt_manager
+import uuid
+from datetime import datetime
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -67,6 +69,26 @@ async def suggest_file_move(file_path: str, ctx: Context) -> dict:
 
         await ctx.log(f"✨ Sugestão recebida: Mover para '{suggestion.get('to')}'", level="info")
 
+        # --- NOVO: Postar sugestão no HiveMind ---
+        entry_id = uuid.uuid4().hex
+        entry: MemoryEntry = {
+            "entry_id": entry_id,
+            "agent_name": "SuggestionAgent",
+            "entry_type": "SUGGESTION",
+            "timestamp": datetime.utcnow().isoformat(),
+            "content": f"Sugiro mover {file_path} para {suggestion.get('to')}",
+            "context": {
+                "directory": str(Path(file_path).parent),
+                "file_name": Path(file_path).name,
+                "file_ext": Path(file_path).suffix
+            },
+            "tags": ["suggestion", Path(file_path).suffix.lstrip('.')],
+            "utility_score": 0.0,
+            "references_entry_id": None
+        }
+        await post_entry.fn(entry=entry, ctx=ctx)
+        # Retornar o entry_id junto com a sugestão
+        suggestion["entry_id"] = entry_id
         return {"status": "success", "suggestion": suggestion}
 
     except Exception as e:

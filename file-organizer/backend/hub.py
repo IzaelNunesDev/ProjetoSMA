@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from fastmcp import FastMCP, Context, Client
 from rich.console import Console
+from context_manager import ContextManager
+from checkpoint_manager import CheckpointManager
 
 # Importa as FUNÇÕES dos agentes diretamente
 from agents.scanner_agent import scan_directory, summarize_scan_results
@@ -26,7 +28,8 @@ async def organize_directory(
     dir_path: str,
     user_goal: str,
     auto_approve: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    example_file_contents: str = ""
 ):
     """
     Orquestra o processo de organização de arquivos de forma limpa e sequencial.
@@ -62,12 +65,16 @@ async def organize_directory(
         llm_categorized_map = {}
         if items_for_llm:
             await ctx.log(f" Passo 3/5: Categorizando {len(items_for_llm)} itens restantes com IA...", level="info")
+            # Buscar contexto hierárquico
+            user_rules_context = ContextManager.get_hierarchical_context(str(root_dir))
             llm_categorized_map = await categorize_items.fn(
                 user_goal=user_goal,
                 root_directory=str(root_dir),
                 directory_summaries=[item for item in items_for_llm if Path(item['path']).is_dir()],
                 loose_files_metadata=[item for item in items_for_llm if Path(item['path']).is_file()],
-                ctx=ctx
+                ctx=ctx,
+                user_rules_context=user_rules_context,
+                example_file_contents=example_file_contents
             )
         else:
             await ctx.log(" Passo 3/5: Nenhum item restante para categorização com IA.", level="info")
@@ -93,8 +100,15 @@ async def organize_directory(
             return {"status": "plan_generated", "plan": plan_object}
 
         # FASE 5: EXECUTAR O PLANO
+        # --- CHECKPOINT ---
+        try:
+            # Executar a criação do checkpoint em um thread separado para não bloquear o loop de eventos
+            commit_hash = await asyncio.to_thread(CheckpointManager.create_checkpoint, str(root_dir))
+            await ctx.log(f"Checkpoint criado antes da execução do plano: {commit_hash}", level="info")
+        except Exception as e:
+            await ctx.log(f"Falha ao criar checkpoint: {e}", level="warning")
         await ctx.log(" Executando plano de organização (Passo 5/5)...", level="info")
-        execution_results = await execute_plan.fn(plan=plan_object, ctx=ctx)
+        execution_results = await execute_plan(plan=plan_object, ctx=ctx)
 
         # Adicionar o registro da experiência de organização ao Hive Mind
         async with Client(hub_mcp) as client:
@@ -138,11 +152,11 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
         execution_summary = []
         for action in steps:
             action_type = action.get("action")
-            result = await execute_planned_action.fn(
-                action=action,
-                root_directory=root_directory,
-                ctx=ctx
-            )
+            result = await client.call_tool('execute_planned_action', {
+                'action': action,
+                'root_directory': root_directory,
+                'ctx': ctx
+            })
             execution_summary.append(result)
             if result.get("status") == "error":
                 await ctx.log(f" Falha na ação, interrompendo execução: {result.get('details')}", level="error")
@@ -189,14 +203,30 @@ async def organize_experimental(directory_path: str, ctx: Context) -> str:
     }
     return json.dumps(result_payload)
 
-hub_mcp.add_tool(find_empty_folders)
-hub_mcp.add_tool(post_memory_experience)
-hub_mcp.add_tool(get_feed_for_agent)
-hub_mcp.add_tool(suggest_file_move)
-hub_mcp.add_tool(execute_plan)
-hub_mcp.add_tool(get_tree_summary)
-hub_mcp.add_tool(categorize_from_tree)
-hub_mcp.add_tool(organize_experimental)
+
+
+@hub_mcp.tool
+async def execute_planned_action(action: dict, root_directory: str, ctx: Context) -> dict:
+    """
+    Executa uma ação planejada (criar pasta, mover arquivo/pasta).
+    """
+    action_type = action.get("action")
+    async with Client(hub_mcp) as client: # Use Client para chamar ferramentas de outros agentes
+        if action_type == "CREATE_FOLDER":
+            return await client.call_tool('create_folder', {'path': action['path'], 'root_directory': root_directory})
+        elif action_type == "MOVE_FILE":
+            return await client.call_tool('move_file', {'from_path': action['from'], 'to_path': action['to'], 'root_directory': root_directory, 'suggestion_entry_id': action.get('suggestion_entry_id')})
+        elif action_type == "MOVE_FOLDER":
+            return await client.call_tool('move_folder', {'from_path': action['from'], 'to_path': action['to'], 'root_directory': root_directory})
+        else:
+            msg = f"Tipo de ação desconhecido: {action_type}"
+            await ctx.log(msg, level="error")
+            return {"status": "error", "details": msg}
+
+hub_mcp.add_tool(create_folder)
+hub_mcp.add_tool(move_file)
+hub_mcp.add_tool(move_folder)
+
 
 @hub_mcp.tool
 async def index_directory_for_memory(directory_path: str, ctx: Context) -> dict:
@@ -212,23 +242,3 @@ async def query_files_in_memory(query: str, ctx: Context) -> dict:
     """
     return await query_memory.fn(query=query, ctx=ctx)
 
-@hub_mcp.tool
-async def execute_planned_action(action: dict, root_directory: str, ctx: Context) -> dict:
-    """
-    Ferramenta do hub para executar uma única ação planejada, delegando para o executor_agent.
-    """
-    action_type = action.get("action")
-    await ctx.log(f"Hub: Executando ação delegada '{action_type}'", level="info")
-
-    result = {}
-    if action_type == "CREATE_FOLDER":
-        result = await create_folder.fn(path=action.get("path"), root_directory=root_directory, ctx=ctx)
-    elif action_type == "MOVE_FILE":
-        result = await move_file.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=root_directory, ctx=ctx)
-    elif action_type == "MOVE_FOLDER":
-        result = await move_folder.fn(from_path=action.get("from"), to_path=action.get("to"), root_directory=root_directory, ctx=ctx)
-    else:
-        result = {"status": "error", "details": f"Ação desconhecida recebida pelo hub: {action_type}"}
-        await ctx.log(result["details"], level="warning")
-
-    return result

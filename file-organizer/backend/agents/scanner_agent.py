@@ -101,6 +101,8 @@ async def scan_directory(directory_path: str, ctx: Context, max_depth: int = 5, 
     if not root.is_dir():
         raise ValueError("Caminho fornecido não é um diretório válido.")
 
+    root_depth = len(root.parts)
+
     # 1. Get current state from ChromaDB
     from agents.memory_agent import hive_mind_collection
     existing_files_data = hive_mind_collection.get(
@@ -109,7 +111,6 @@ async def scan_directory(directory_path: str, ctx: Context, max_depth: int = 5, 
     indexed_files = {meta['path']: meta for meta in existing_files_data['metadatas']}
 
     resultados = []
-    root_depth = len(root.parts)
 
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]

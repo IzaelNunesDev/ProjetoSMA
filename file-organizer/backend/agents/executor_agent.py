@@ -2,6 +2,9 @@
 import shutil
 from pathlib import Path
 from fastmcp import FastMCP, Context
+from agents.memory_agent import post_entry, MemoryEntry
+import uuid
+from datetime import datetime
 
 mcp = FastMCP(name="ExecutorAgent")
 
@@ -32,7 +35,7 @@ async def create_folder(path: str, root_directory: str, ctx: Context) -> dict:
         return {"status": "error", "details": msg}
 
 @mcp.tool
-async def move_file(from_path: str, to_path: str, root_directory: str, ctx: Context) -> dict:
+async def move_file(from_path: str, to_path: str, root_directory: str, ctx: Context, suggestion_entry_id: str = None) -> dict:
     """Move um arquivo de forma segura, garantindo que ambas as localidades estejam dentro do diretório raiz."""
     source = Path(from_path)
     destination = Path(to_path)
@@ -47,7 +50,25 @@ async def move_file(from_path: str, to_path: str, root_directory: str, ctx: Cont
         await ctx.log(f"  - Movendo: {source.name} -> {to_path}", level="info")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(destination))
-        return {"status": "success", "action": "move_file", "from": from_path, "to": to_path}
+        # --- Postar resultado no HiveMind ---
+        entry_id = uuid.uuid4().hex
+        entry: MemoryEntry = {
+            "entry_id": entry_id,
+            "agent_name": "ExecutorAgent",
+            "entry_type": "ACTION_RESULT",
+            "timestamp": datetime.utcnow().isoformat(),
+            "content": f"Arquivo movido de {from_path} para {to_path}",
+            "context": {
+                "root_directory": root_directory,
+                "from": from_path,
+                "to": to_path
+            },
+            "tags": ["action_result", "move_file"],
+            "utility_score": 0.0,
+            "references_entry_id": suggestion_entry_id
+        }
+        await post_entry.fn(entry=entry, ctx=ctx)
+        return {"status": "success", "action": "move_file", "from": from_path, "to": to_path, "action_entry_id": entry_id}
     except Exception as e:
         msg = f"Falha ao mover arquivo '{source}': {e}"
         await ctx.log(msg, level="error")

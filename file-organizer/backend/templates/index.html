@@ -32,12 +32,20 @@
         .decline-btn { background-color: #dc3545; }
         .decline-btn:hover { background-color: #c82333; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Estilos específicos para o modal de checkpoints */
+        #restore-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+        #restore-modal.hidden { display: none !important; }
+        #restore-modal .modal-content { background: #232323; padding: 30px; border-radius: 8px; min-width: 350px; max-width: 90vw; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px #000a; border: 1px solid #444; }
+        #close-restore-modal { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        #close-restore-modal:hover { background: #555; }
     </style>
 </head>
 <body>
     <div id="chat-container">
-        <div style="padding: 10px 20px; background-color: #252525; border-bottom: 1px solid #333; text-align: right;">
+        <div style="padding: 10px 20px; background-color: #252525; border-bottom: 1px solid #333; text-align: right; display: flex; justify-content: space-between; align-items: center;">
             <a href="/feed" target="_blank" style="color: #00aaff; text-decoration: none; font-weight: bold;">Ver Feed do Hive Mind ↗️</a>
+            <button id="restore-btn" style="background: #222; color: #f9ca24; border: 1px solid #f9ca24; margin-left: 10px; padding: 6px 14px; border-radius: 4px; cursor: pointer;">Histórico/Restaurar</button>
         </div>
         <div id="messages"></div>
         <form id="form" onsubmit="return false;">
@@ -84,6 +92,16 @@
 
             <button id="submit_button" style="width: 100%; margin-top: 10px;">Executar</button>
         </form>
+    </div>
+
+    <div id="restore-modal" class="hidden">
+        <div class="modal-content">
+            <h2 style="color: #f9ca24; margin-top: 0; margin-bottom: 20px;">📁 Checkpoints do Diretório</h2>
+            <div id="checkpoint-list" style="min-height: 100px;">Carregando...</div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="close-restore-modal" onclick="document.getElementById('restore-modal').classList.add('hidden'); document.getElementById('checkpoint-list').innerHTML = 'Carregando...';">Fechar</button>
+            </div>
+        </div>
     </div>
 
     <script src="/static/js/main.js"></script>

@@ -23,25 +23,120 @@
     <div class="container">
         <h1>Feed de Memórias do Hive Mind</h1>
         <p><a href="/">← Voltar para o Agente</a></p>
-        
+        <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <label for="filter-type">Tipo:</label>
+            <select id="filter-type">
+                <option value="">Todos</option>
+                <option value="SUGGESTION">Sugestão</option>
+                <option value="ACTION_RESULT">Resultado de Ação</option>
+                <option value="ALERT">Alerta</option>
+                <option value="INSIGHT">Insight</option>
+            </select>
+            <label for="filter-agent">Agente:</label>
+            <select id="filter-agent">
+                <option value="">Todos</option>
+                {% for item in feed_items|unique(attribute='agent_name') %}
+                <option value="{{ item.agent_name }}">{{ item.agent_name }}</option>
+                {% endfor %}
+            </select>
+            <input id="filter-text" type="text" placeholder="Buscar no conteúdo..." style="padding: 5px 10px; border-radius: 4px; border: 1px solid #333; background: #232323; color: #eee;" />
+        </div>
+        <div id="feed-list">
+        {% set entry_map = dict() %}
         {% for item in feed_items %}
-        <div class="post">
-            <div class="post-header">
-                <span class="post-agent">🤖 {{ item.source }}</span>
-                <span class="post-time">{{ item.timestamp.split('T')[0] }} {{ item.timestamp.split('T')[1].split('.')[0] }}</span>
-            </div>
-            <div class="post-content">
-                {{ item.content }}
-            </div>
-            <div class="post-tags">
-                {% for tag in item.tags %}
-                <span class="tag">#{{ tag }}</span>
+            {% set _ = entry_map.update({item.entry_id: item}) %}
+        {% endfor %}
+        {% for item in feed_items %}
+            {% if not item.references_entry_id %}
+            <div class="post" data-type="{{ item.entry_type }}" data-agent="{{ item.agent_name }}" data-content="{{ item.content|lower }}" style="border-left:4px solid {% if item.entry_type == 'SUGGESTION' %}#f9ca24{% elif item.entry_type == 'ACTION_RESULT' %}#28a745{% elif item.entry_type == 'ALERT' %}#dc3545{% else %}#007bff{% endif %};">
+                <div class="post-header">
+                    <span class="post-agent">🤖 {{ item.agent_name }}</span>
+                    <span class="post-time">{{ item.timestamp.split('T')[0] }} {{ item.timestamp.split('T')[1].split('.')[0] }}</span>
+                    <span title="Utilidade" style="margin-left:10px; color:#f9ca24; font-size:1.1em;">
+                        {% for i in range(item.utility_score|round(0,'floor')) %}★{% endfor %}
+                        {% if item.utility_score < 1 %}☆{% endif %}
+                        <span style="font-size:0.8em; color:#aaa;">({{ item.utility_score|round(2) }})</span>
+                    </span>
+                </div>
+                <div class="post-content">
+                    {% if item.entry_type == 'SUGGESTION' %}
+                        <b>Sugestão:</b> {{ item.content }}
+                    {% elif item.entry_type == 'ACTION_RESULT' %}
+                        <b>Resultado de Ação:</b> {{ item.content }}
+                    {% elif item.entry_type == 'ALERT' %}
+                        <b>Alerta:</b> {{ item.content }}
+                    {% elif item.entry_type == 'INSIGHT' %}
+                        <b>Insight:</b> {{ item.content }}
+                    {% else %}
+                        {{ item.content }}
+                    {% endif %}
+                </div>
+                <div class="post-tags">
+                    {% for tag in item.tags %}
+                    <span class="tag">#{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% for reply in feed_items if reply.references_entry_id == item.entry_id %}
+                <div class="post" data-type="{{ reply.entry_type }}" data-agent="{{ reply.agent_name }}" data-content="{{ reply.content|lower }}" style="margin-left:30px; background:#232323; border-left:3px solid #28a745;">
+                    <div class="post-header">
+                        <span class="post-agent">↳ 🤖 {{ reply.agent_name }}</span>
+                        <span class="post-time">{{ reply.timestamp.split('T')[0] }} {{ reply.timestamp.split('T')[1].split('.')[0] }}</span>
+                        <span title="Utilidade" style="margin-left:10px; color:#f9ca24; font-size:1.1em;">
+                            {% for i in range(reply.utility_score|round(0,'floor')) %}★{% endfor %}
+                            {% if reply.utility_score < 1 %}☆{% endif %}
+                            <span style="font-size:0.8em; color:#aaa;">({{ reply.utility_score|round(2) }})</span>
+                        </span>
+                    </div>
+                    <div class="post-content">
+                        {% if reply.entry_type == 'ACTION_RESULT' %}
+                            <b>Resultado de Ação:</b> {{ reply.content }}
+                        {% elif reply.entry_type == 'ALERT' %}
+                            <b>Alerta:</b> {{ reply.content }}
+                        {% elif reply.entry_type == 'INSIGHT' %}
+                            <b>Insight:</b> {{ reply.content }}
+                        {% else %}
+                            {{ reply.content }}
+                        {% endif %}
+                    </div>
+                    <div class="post-tags">
+                        {% for tag in reply.tags %}
+                        <span class="tag">#{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
                 {% endfor %}
             </div>
-        </div>
+            {% endif %}
         {% else %}
         <div class="post">O feed está vazio. Realize algumas ações para começar!</div>
         {% endfor %}
+        </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const typeSelect = document.getElementById('filter-type');
+        const agentSelect = document.getElementById('filter-agent');
+        const textInput = document.getElementById('filter-text');
+        const posts = document.querySelectorAll('#feed-list .post');
+        function filterFeed() {
+            const type = typeSelect.value;
+            const agent = agentSelect.value;
+            const text = textInput.value.toLowerCase();
+            posts.forEach(post => {
+                const matchType = !type || post.getAttribute('data-type') === type;
+                const matchAgent = !agent || post.getAttribute('data-agent') === agent;
+                const matchText = !text || post.getAttribute('data-content').includes(text);
+                if (matchType && matchAgent && matchText) {
+                    post.style.display = '';
+                } else {
+                    post.style.display = 'none';
+                }
+            });
+        }
+        typeSelect.addEventListener('change', filterFeed);
+        agentSelect.addEventListener('change', filterFeed);
+        textInput.addEventListener('input', filterFeed);
+    });
+    </script>
 </body>
 </html>

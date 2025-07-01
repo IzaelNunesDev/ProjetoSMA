@@ -6,6 +6,9 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Dict, List, Tuple
+from agents.memory_agent import post_entry, MemoryEntry
+import uuid
+from datetime import datetime
 
 mcp = FastMCP(name="MaintenanceAgent")
 
@@ -19,10 +22,22 @@ async def find_empty_folders(directory_path: str, ctx: Context) -> dict:
         if not dirnames and not filenames:
             await ctx.log(f"Pasta vazia encontrada: {dirpath}", level="debug")
             empty_folders.append(str(dirpath))
-    
+    if empty_folders:
+        # Postar ALERT no HiveMind
+        entry: MemoryEntry = {
+            "entry_id": uuid.uuid4().hex,
+            "agent_name": "MaintenanceAgent",
+            "entry_type": "ALERT",
+            "timestamp": datetime.utcnow().isoformat(),
+            "content": f"Pastas vazias encontradas: {empty_folders}",
+            "context": {"directory": str(root)},
+            "tags": ["alert", "empty_folders"],
+            "utility_score": 0.0,
+            "references_entry_id": None
+        }
+        await post_entry.fn(entry=entry, ctx=ctx)
     if not empty_folders:
         return {"status": "success", "message": "Nenhuma pasta vazia encontrada."}
-    
     return {"status": "success", "empty_folders": empty_folders}
 
 @mcp.tool
@@ -45,6 +60,21 @@ async def find_duplicates(ctx: Context, directory: str) -> List[Tuple[str, List[
     # Filter for hashes with multiple files
     duplicates = [(h, paths) for h, paths in hash_map.items() if len(paths) > 1]
     await ctx.log(f"✅ Found {len(duplicates)} sets of duplicates", level="info")
+    
+    if duplicates:
+        # Postar ALERT no HiveMind
+        entry: MemoryEntry = {
+            "entry_id": uuid.uuid4().hex,
+            "agent_name": "MaintenanceAgent",
+            "entry_type": "ALERT",
+            "timestamp": datetime.utcnow().isoformat(),
+            "content": f"Arquivos duplicados encontrados: {duplicates}",
+            "context": {"directory": directory},
+            "tags": ["alert", "duplicates"],
+            "utility_score": 0.0,
+            "references_entry_id": None
+        }
+        await post_entry.fn(entry=entry, ctx=ctx)
     
     return duplicates
 

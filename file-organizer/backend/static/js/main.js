@@ -232,4 +232,118 @@ document.addEventListener('DOMContentLoaded', () => {
     addMessageToChat('agent', 'Olá! Sou seu agente de arquivos. Escolha uma ação, preencha os campos e clique para começar.');
 
     actionSelect.dispatchEvent(new Event('change'));
+
+    // --- RESTAURAÇÃO DE CHECKPOINTS ---
+    const restoreBtn = document.getElementById('restore-btn');
+    const restoreModal = document.getElementById('restore-modal');
+    const closeRestoreModal = document.getElementById('close-restore-modal');
+    const checkpointList = document.getElementById('checkpoint-list');
+
+    restoreBtn.addEventListener('click', async () => {
+        const dir = dirInputOrganize.value;
+        if (!dir) {
+            alert('Preencha o caminho do diretório para ver os checkpoints.');
+            return;
+        }
+        
+        // Mostrar modal e indicar carregamento
+        restoreModal.classList.remove('hidden');
+        checkpointList.innerHTML = '<div style="text-align: center; padding: 20px; color: #f9ca24;">🔄 Carregando checkpoints...</div>';
+        
+        try {
+            const resp = await fetch('/api/checkpoints/list', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ directory: dir })
+            });
+            
+            const data = await resp.json();
+            
+            if (data.status === 'success' && data.checkpoints && data.checkpoints.length > 0) {
+                checkpointList.innerHTML = data.checkpoints.map(cp =>
+                    `<div style='margin-bottom: 12px; padding: 10px; background: #181818; border-radius: 4px;'>
+                        <div><b>Commit:</b> <code>${cp.hash.slice(0,8)}</code></div>
+                        <div><b>Data:</b> ${new Date(cp.date).toLocaleString()}</div>
+                        <div><b>Mensagem:</b> ${cp.msg}</div>
+                        <button class='restore-checkpoint-btn' data-hash='${cp.hash}' style='margin-top: 8px; background: #f9ca24; color: #222; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer;'>Restaurar</button>
+                    </div>`
+                ).join('');
+                
+                // Adicionar event listeners aos botões de restaurar
+                document.querySelectorAll('.restore-checkpoint-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        if (!confirm('Tem certeza que deseja restaurar este checkpoint? Isso irá sobrescrever os arquivos atuais.')) return;
+                        
+                        const hash = btn.getAttribute('data-hash');
+                        btn.disabled = true;
+                        btn.textContent = 'Restaurando...';
+                        
+                        try {
+                            const resp = await fetch(`/api/checkpoints/restore/${hash}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ directory: dir })
+                            });
+                            const result = await resp.json();
+                            
+                            if (result.status === 'success') {
+                                alert('Checkpoint restaurado com sucesso!');
+                                restoreModal.classList.add('hidden');
+                            } else {
+                                alert('Erro ao restaurar checkpoint: ' + (result.message || 'Erro desconhecido'));
+                                btn.disabled = false;
+                                btn.textContent = 'Restaurar';
+                            }
+                        } catch (err) {
+                            console.error('Erro ao restaurar checkpoint:', err);
+                            alert('Erro ao restaurar checkpoint: ' + err.message);
+                            btn.disabled = false;
+                            btn.textContent = 'Restaurar';
+                        }
+                    });
+                });
+            } else {
+                checkpointList.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #f9ca24;">
+                        📁 Nenhum checkpoint encontrado para este diretório.
+                        <br><br>
+                        <small style="color: #888;">Os checkpoints são criados automaticamente quando você organiza arquivos.</small>
+                    </div>
+                `;
+            }
+        } catch (err) {
+            console.error('Erro ao buscar checkpoints:', err);
+            checkpointList.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #ff6b6b;">
+                    ❌ Erro ao buscar checkpoints: ${err.message}
+                    <br><br>
+                    <button onclick="location.reload()" style="background: #333; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Tentar Novamente</button>
+                </div>
+            `;
+        }
+    });
+    
+    // Fechar modal quando clicar no botão fechar
+    closeRestoreModal.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreModal.classList.add('hidden');
+        checkpointList.innerHTML = 'Carregando...';
+    });
+    
+    // Fechar modal quando clicar fora dele
+    restoreModal.addEventListener('click', (e) => {
+        if (e.target === restoreModal) {
+            restoreModal.classList.add('hidden');
+            checkpointList.innerHTML = 'Carregando...';
+        }
+    });
+    
+    // Fechar modal com ESC
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !restoreModal.classList.contains('hidden')) {
+            restoreModal.classList.add('hidden');
+            checkpointList.innerHTML = 'Carregando...';
+        }
+    });
 });
