@@ -44,7 +44,7 @@ async def suggest_file_move(file_path: str, ctx: Context) -> dict:
         await ctx.log(f"🔎 Consultando memória com a query: '{query_str}'", level="info")
         memory_result = await query_memory.fn(query=query_str, ctx=ctx)
         
-        similar_files_info = memory_result.get("source_files", [])
+        similar_files_info = memory_result.get("results", [])
 
         if not similar_files_info:
             await ctx.log("Nenhum arquivo similar encontrado na memória. Não é possível sugerir.", level="info")

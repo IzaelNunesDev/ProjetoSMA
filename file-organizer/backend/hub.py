@@ -154,13 +154,14 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
         async with Client(hub_mcp) as client:
             for action in steps:
                 action_type = action.get("action")
-                result = await client.call_tool('execute_planned_action', { # Usar o client definido
+                result_object = await client.call_tool('execute_planned_action', { # Usar o client definido
                     'action': action,
                     'root_directory': root_directory,
                     'ctx': ctx
                 })
+                result = result_object.structured_content
                 execution_summary.append(result)
-                if result.get("status") == "error":
+                if result and result.get("status") == "error":
                     await ctx.log(f" Falha na ação, interrompendo execução: {result.get('details')}", level="error")
                     break
         
@@ -217,7 +218,14 @@ async def execute_planned_action(action: dict, root_directory: str, ctx: Context
         if action_type == "CREATE_FOLDER":
             return await client.call_tool('create_folder', {'path': action['path'], 'root_directory': root_directory})
         elif action_type == "MOVE_FILE":
-            return await client.call_tool('move_file', {'from_path': action['from'], 'to_path': action['to'], 'root_directory': root_directory, 'suggestion_entry_id': action.get('suggestion_entry_id')})
+            move_params = {
+                'from_path': action['from'],
+                'to_path': action['to'],
+                'root_directory': root_directory
+            }
+            if 'suggestion_entry_id' in action and action['suggestion_entry_id']:
+                move_params['suggestion_entry_id'] = action['suggestion_entry_id']
+            return await client.call_tool('move_file', move_params)
         elif action_type == "MOVE_FOLDER":
             return await client.call_tool('move_folder', {'from_path': action['from'], 'to_path': action['to'], 'root_directory': root_directory})
         else:
