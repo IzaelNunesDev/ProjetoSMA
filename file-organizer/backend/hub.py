@@ -20,6 +20,8 @@ from agents.maintenance_agent import find_empty_folders
 from agents.digest_agent import get_tree_summary
 from agents.tree_categorizer_agent import categorize_from_tree
 
+from agents.maintenance_agent import find_empty_folders, find_duplicates
+
 console = Console()
 hub_mcp = FastMCP(name="FileOrganizerHub")
 
@@ -101,13 +103,6 @@ async def organize_directory(
             return {"status": "plan_generated", "plan": plan_object}
 
         # FASE 5: EXECUTAR O PLANO
-        # --- CHECKPOINT ---
-        try:
-            # Executar a criação do checkpoint em um thread separado para não bloquear o loop de eventos
-            commit_hash = await asyncio.to_thread(CheckpointManager.create_checkpoint, str(root_dir))
-            await ctx.log(f"Checkpoint criado antes da execução do plano: {commit_hash}", level="info")
-        except Exception as e:
-            await ctx.log(f"Falha ao criar checkpoint: {e}", level="warning")
         await ctx.log(" Executando plano de organização (Passo 5/5)...", level="info")
         execution_results = await execute_plan(plan=plan_object, ctx=ctx)
 
@@ -148,6 +143,14 @@ async def execute_plan(plan: dict, ctx: Context) -> dict:
         
         if not root_directory:
             return {"status": "error", "details": "O plano não contém um 'root_directory'."}
+
+        # --- CHECKPOINT MOVIDO PARA CÁ ---
+        try:
+            commit_hash = await asyncio.to_thread(CheckpointManager.create_checkpoint, str(root_directory))
+            await ctx.log(f"Checkpoint criado antes da execução do plano: {commit_hash}", level="info")
+        except Exception as e:
+            await ctx.log(f"Falha ao criar checkpoint: {e}", level="warning")
+        # --- FIM DO BLOCO DE CHECKPOINT ---
 
         await ctx.log(f" Executando plano aprovado para '{root_directory}'...", level="info")
         execution_summary = []
@@ -204,7 +207,7 @@ async def organize_experimental(directory_path: str, ctx: Context) -> str:
         "tree": tree_text,
         "result": suggestions
     }
-    return json.dumps(result_payload)
+    return result_payload
 
 
 
@@ -256,6 +259,8 @@ async def handle_file_modified(path: str, ctx: Context) -> dict:
 hub_mcp.add_tool(create_folder)
 hub_mcp.add_tool(move_file)
 hub_mcp.add_tool(move_folder)
+hub_mcp.add_tool(find_empty_folders)
+hub_mcp.add_tool(find_duplicates)
 
 
 @hub_mcp.tool

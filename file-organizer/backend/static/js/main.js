@@ -100,18 +100,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.type === 'log') {
             addMessageToChat('log', data.message, data.level);
         } else if (data.type === 'experimental_result') { 
-            // Primeiro, verifica se o backend retornou um erro
-            if (data.data.status === 'error') {
-                addMessageToChat('agent', `❌ Erro na análise experimental: ${data.data.details}`, 'error');
+            // Unificar o tratamento de erros para experimental_result
+            if (data.data && data.data.status === 'error') {
+                const errorMessage = data.data.details || data.data.message || 'Erro desconhecido na análise experimental.';
+                addMessageToChat('agent', `❌ Erro na análise experimental: ${errorMessage}`, 'error');
                 return;
             }
 
             const result = data.data.result;
             const tree = data.data.tree;
 
-            // Verifica se o 'result' existe antes de tentar ler 'analysis'
             if (!result) {
-                addMessageToChat('agent', `❌ Erro: A resposta da análise está mal formatada.`, 'error');
+                addMessageToChat('agent', `❌ Erro: A resposta da análise experimental está mal formatada.`, 'error');
                 return;
             }
             
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 html += '<p>Nenhuma sugestão de reorganização necessária.</p>';
             }
-            html += '<strong>Estrutura Analisada:</strong><pre style="background-color: #2a2a2a; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word;">' + tree + '</pre>';
+            html += '<strong>Estrutura Analisada:</strong><pre style="background-color: #2a2a2a; padding: 10px; border-radius: 5px; white-wrap; word-wrap: break-word;">' + tree + '</pre>';
             addMessageToChat('agent', { message: '✅ Análise Experimental Concluída', data: html }, 'info', 'html');
         } else if (data.type === 'plan_result') {
             displayPlanForApproval(data.data);

@@ -23,17 +23,19 @@ async def categorize_from_tree(tree_text: str, ctx: Context) -> dict:
     await ctx.log("Enviando árvore para análise do LLM...", level="info")
     
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(
+            'gemini-1.5-flash',
+            generation_config=genai.GenerationConfig(response_mime_type="application/json") 
+        )
         response = await model.generate_content_async(prompt)
         
-        json_str = response.text.strip()
-        if json_str.startswith('```json'):
-            json_str = json_str[7:-3].strip()
-
-        result = json.loads(json_str)
+        result = json.loads(response.text)
         await ctx.log("Análise da árvore recebida do LLM.", level="info")
         return result
 
     except Exception as e:
-        await ctx.log(f"TreeCategorizerAgent encontrou um erro: {e}", level="error")
+        response_text = "N/A"
+        if 'response' in locals() and hasattr(response, 'text'):
+            response_text = response.text
+        await ctx.log(f"TreeCategorizerAgent encontrou um erro: {e}. Resposta recebida: {response_text}", level="error")
         return {"analysis": f"Erro ao analisar: {e}", "suggestions": []}

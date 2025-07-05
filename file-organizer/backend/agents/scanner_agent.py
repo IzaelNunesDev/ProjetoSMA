@@ -207,3 +207,28 @@ async def summarize_scan_results(scan_results: list[dict], ctx: Context) -> list
 
     await ctx.log(f"✅ Resumo concluído. {len(scan_results)} arquivos agrupados em {len(summary_list)} diretórios.", level="info")
     return summary_list
+
+async def process_single_file(file_path: str, ctx: Context) -> dict | None:
+    arquivo = Path(file_path)
+    if not arquivo.is_file(): return None
+    try:
+        stat = arquivo.stat()
+        current_mtime = stat.st_mtime
+        metadado = {
+            "type": "file",
+            "path": str(arquivo),
+            "name": arquivo.name,
+            "ext": arquivo.suffix.lower(),
+            "size_kb": round(stat.st_size / 1024, 2),
+            "modified_at": datetime.fromtimestamp(current_mtime).isoformat(),
+            "content_summary": "",
+            "estrutura_deduzida": deduzir_estrutura_de_pasta(arquivo.parent),
+            "tipo_deduzido": deduzir_tipo_de_arquivo(arquivo),
+        }
+        if arquivo.suffix.lower() in SUPPORTED_CONTENT_EXTS:
+            conteudo = extrair_conteudo_resumido(arquivo)
+            metadado["content_summary"] = conteudo[:CONTENT_LIMIT]
+        return metadado
+    except Exception as e:
+        await ctx.log(f"Erro ao processar arquivo individual '{file_path}': {e}", level="error")
+        return None

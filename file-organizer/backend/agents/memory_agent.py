@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict, TypedDict, Optional
 import google.generativeai as genai
 from fastmcp import FastMCP, Context
-from agents.scanner_agent import scan_directory
+from agents.scanner_agent import scan_directory, process_single_file
 from prompt_manager import prompt_manager
 import chromadb
 
@@ -301,18 +301,7 @@ async def update_memory_index(path: str, ctx: Context) -> dict:
     """
     await ctx.log(f"Atualizando arquivo no índice de memória: {path}", level="info")
     try:
-        # Re-scan the single file to get its latest metadata and content
-        # This is a simplified approach; a more robust solution might involve
-        # a dedicated single-file scanner or direct content reading.
-        # For now, we'll simulate by calling scan_directory on its parent
-        # and filtering for the specific file.
-        
-        # Temporarily disable force_rescan to avoid re-scanning the whole directory
-        # if it's not necessary. We only care about this specific file.
-        parent_dir = str(Path(path).parent)
-        files_metadata = await scan_directory.fn(directory_path=parent_dir, ctx=ctx, force_rescan=True)
-        
-        target_file_metadata = next((f for f in files_metadata if f['path'] == path), None)
+        target_file_metadata = await process_single_file(path, ctx)
 
         if not target_file_metadata or not target_file_metadata.get("content_summary"):
             msg = f"Arquivo {path} não encontrado ou sem conteúdo extraível para atualização."

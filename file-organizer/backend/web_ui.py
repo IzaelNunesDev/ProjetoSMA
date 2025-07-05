@@ -1,6 +1,9 @@
+from agents.executor_agent import _is_path_safe
+
 # web_ui.py (VERSÃO CORRIGIDA)
 import json
 import asyncio
+import warnings
 from typing import List
 from pathlib import Path
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -8,6 +11,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import re
+
+# Suprimir warnings de depreciação
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from hub import hub_mcp
 from fastmcp import Client, Context
@@ -46,6 +52,10 @@ manager = ConnectionManager()
 
 # --- Lógica do Watcher ---
 async def on_new_file_detected(file_path: str):
+    # Dispara o processamento em background para não travar o loop principal
+    asyncio.create_task(process_file_suggestion(file_path))
+
+async def process_file_suggestion(file_path: str):
     print(f"UI Handler: Novo arquivo detectado pelo watcher: {file_path}")
     try:
         async with Client(hub_mcp) as client:
@@ -111,6 +121,7 @@ active_watchers = {}
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    connection_observer = None
 
     async def websocket_log_handler(message: str, level: str):
         try:
@@ -139,8 +150,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     if directory in active_watchers and active_watchers[directory].is_alive():
                         await websocket.send_json({"type": "log", "level":"warning", "message": f"Já monitorando {directory}."})
                         continue
+                    
+                    if connection_observer and connection_observer.is_alive():
+                        connection_observer.stop()
+                        connection_observer.join()
+
                     observer = start_watcher_thread(directory, on_new_file_detected)
-                    active_watchers[directory] = observer
+                    active_watchers[directory] = observer # Pode manter para evitar duplicatas globais
+                    connection_observer = observer # Armazena na variável da conexão
                     await websocket.send_json({"type": "log", "level":"info", "message": f"👁️ Monitoramento iniciado em: {directory}"})
                     continue
                 
@@ -161,16 +178,21 @@ async def websocket_endpoint(websocket: WebSocket):
                             contents = []
                             for match in matches:
                                 file_path = Path(match)
-                                # Se o caminho não for absoluto, considerar relativo ao diretório alvo
-                                if not file_path.is_absolute() and directory:
-                                    file_path = Path(directory) / file_path
-                                if file_path.exists() and file_path.is_file():
+                                base_dir = Path(directory)
+                                if not file_path.is_absolute():
+                                    file_path = base_dir / file_path
+
+                                # Adicionar verificação de segurança
+                                if _is_path_safe(file_path, base_dir) and file_path.exists() and file_path.is_file():
                                     try:
                                         # Limitar tamanho do conteúdo lido (ex: 10KB)
                                         content = file_path.read_text(encoding='utf-8', errors='ignore')[:10000]
                                         contents.append(f"--- CONTEÚDO DE {file_path} ---\n{content}\n-------------------------------------------")
                                     except Exception:
                                         pass
+                                else:
+                                    # Ignorar ou logar tentativa de acesso inválido
+                                    await websocket.send_json({"type": "log", "level":"warning", "message": f"Acesso negado ou arquivo não encontrado: {match}"})
                             if contents:
                                 example_file_contents = "\n".join(contents)
 
@@ -245,6 +267,10 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Erro no WebSocket endpoint: {e}")
     finally:
+        if connection_observer and connection_observer.is_alive():
+            print(f"Parando watcher para cliente desconectado.")
+            connection_observer.stop()
+            connection_observer.join()
         manager.disconnect(websocket)
 
 # --- ENDPOINTS DE API ---
