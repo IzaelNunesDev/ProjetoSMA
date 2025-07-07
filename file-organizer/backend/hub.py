@@ -218,23 +218,27 @@ async def execute_planned_action(action: dict, root_directory: str, ctx: Context
     """
     action_type = action.get("action")
     async with Client(hub_mcp) as client: # Use Client para chamar ferramentas de outros agentes
+        result_object = None
         if action_type == "CREATE_FOLDER":
-            return await client.call_tool('create_folder', {'path': action['path'], 'root_directory': root_directory})
+            result_object = await client.call_tool('create_folder', {'path': action['path'], 'root_directory': root_directory, 'ctx': ctx})
         elif action_type == "MOVE_FILE":
             move_params = {
                 'from_path': action['from'],
                 'to_path': action['to'],
-                'root_directory': root_directory
+                'root_directory': root_directory,
+                'ctx': ctx
             }
             if 'suggestion_entry_id' in action and action['suggestion_entry_id']:
                 move_params['suggestion_entry_id'] = action['suggestion_entry_id']
-            return await client.call_tool('move_file', move_params)
+            result_object = await client.call_tool('move_file', move_params)
         elif action_type == "MOVE_FOLDER":
-            return await client.call_tool('move_folder', {'from_path': action['from'], 'to_path': action['to'], 'root_directory': root_directory})
+            result_object = await client.call_tool('move_folder', {'from_path': action['from'], 'to_path': action['to'], 'root_directory': root_directory, 'ctx': ctx})
         else:
             msg = f"Tipo de ação desconhecido: {action_type}"
             await ctx.log(msg, level="error")
             return {"status": "error", "details": msg}
+        
+        return result_object.structured_content if result_object else {"status": "error", "details": "A ação não retornou resultado."}
 
 @hub_mcp.tool
 async def handle_file_deleted(path: str, ctx: Context) -> dict:
@@ -261,6 +265,8 @@ hub_mcp.add_tool(move_file)
 hub_mcp.add_tool(move_folder)
 hub_mcp.add_tool(find_empty_folders)
 hub_mcp.add_tool(find_duplicates)
+hub_mcp.add_tool(get_feed_for_agent)
+hub_mcp.add_tool(suggest_file_move)
 
 
 @hub_mcp.tool

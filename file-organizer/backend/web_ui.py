@@ -92,8 +92,12 @@ async def process_file_suggestion(file_path: str):
 
     except json.JSONDecodeError as e:
         print(f"Erro ao decodificar a resposta JSON da sugestão: {e}. Raw: '{raw_output if 'raw_output' in locals() else 'N/A'}'")
+    except (IndexError, KeyError) as e:
+        print(f"Erro de estrutura de dados ao processar a sugestão para {file_path}: {e}")
     except Exception as e:
-        print(f"Erro ao processar novo arquivo {file_path}: {e}")
+        import traceback
+        print(f"Erro inesperado ao processar novo arquivo {file_path}: {e}")
+        traceback.print_exc()
         # Não tentar enviar erro via broadcast para evitar loop infinito
 
 
@@ -152,8 +156,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                     
                     if connection_observer and connection_observer.is_alive():
-                        connection_observer.stop()
-                        connection_observer.join()
+                        # Executar a parada e junção em uma thread separada para não bloquear
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, lambda: (connection_observer.stop(), connection_observer.join()))
 
                     observer = start_watcher_thread(directory, on_new_file_detected)
                     active_watchers[directory] = observer # Pode manter para evitar duplicatas globais

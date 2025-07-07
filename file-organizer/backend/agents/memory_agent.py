@@ -10,6 +10,7 @@ from fastmcp import FastMCP, Context
 from agents.scanner_agent import scan_directory, process_single_file
 from prompt_manager import prompt_manager
 import chromadb
+from chromadb.config import Settings
 
 # --- Configuração do Gemini (deve ser feita uma vez) ---
 from dotenv import load_dotenv
@@ -18,8 +19,11 @@ if os.getenv("GEMINI_API_KEY"):
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 # --------------------------------------------------------
 
-# Initialize persistent ChromaDB client
-client = chromadb.PersistentClient(path="chroma_db")
+# Initialize persistent ChromaDB client with telemetry disabled
+client = chromadb.PersistentClient(
+    path="chroma_db",
+    settings=Settings(anonymized_telemetry=False)
+)
 
 # Get or create the collection for our vector store
 hive_mind_collection = client.get_or_create_collection(

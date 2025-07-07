@@ -13,7 +13,8 @@ def _is_path_safe(path_to_check: Path, root_directory: Path) -> bool:
     try:
         safe_root = root_directory.resolve()
         target_path = Path(path_to_check).resolve()
-        return target_path.is_relative_to(safe_root)
+        # Adicionado para verificar explicitamente se o caminho resolvido ainda está dentro do diretório raiz
+        return target_path.is_relative_to(safe_root) and safe_root in target_path.parents
     except Exception:
         return False
 

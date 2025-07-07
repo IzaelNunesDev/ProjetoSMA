@@ -13,13 +13,13 @@ Analise a árvore e retorne APENAS um objeto JSON com duas chaves:
 
 Exemplo de Saída:
 ```json
-{
+{{
   "analysis": "A estrutura contém o jogo 'AssettoCorsa' e uma pasta solta de documentos 'Meus Textos'.",
   "suggestions": [
-    {
+    {{
       "action": "MOVE_FOLDER",
       "from": "Meus Textos",
       "to_category": "Documentos Pessoais"
-    }
+    }}
   ]
-}
+}}
