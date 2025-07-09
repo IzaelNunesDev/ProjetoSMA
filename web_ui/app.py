@@ -50,7 +50,8 @@ async def websocket_endpoint(websocket: WebSocket):
     # Criar um contexto de log para este websocket específico
     async def log_handler(message: str, level: str):
         await websocket.send_json({"type": "log", "level": level, "message": message})
-    ctx = Context(hub_mcp, log_handler=log_handler)
+    # O Context não aceita mais o log_handler, ele deve ser passado para o Client.
+    ctx = Context(hub_mcp)
 
     try:
         while True:
@@ -58,7 +59,8 @@ async def websocket_endpoint(websocket: WebSocket):
             payload = json.loads(data)
             action = payload.get("action")
 
-            async with Client(hub_mcp, default_context=ctx) as client:
+            # CORREÇÃO 2: O contexto (ctx) é passado diretamente para o call_tool.
+            async with Client(hub_mcp, log_handler=log_handler) as client:
                 if action == "generate_plan":
                     directory = payload.get("directory")
                     goal = payload.get("goal")
@@ -66,14 +68,21 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"type": "error", "message": "Caminho do diretório é inválido."})
                         continue
                     
-                    # Chama a ferramenta principal do FileOrganizerAgent
-                    result_object = await client.call_tool("generate_organization_plan",
-                        {"directory_path": directory, "user_goal": goal}
+                    # Log para depuração
+                    await log_handler(f"Chamando 'generate_organization_plan' com diretório: {directory}", "debug")
+                    
+                    # CORREÇÃO FINAL: Argumentos são desempacotados como keywords.
+                    # CORREÇÃO FINAL: O 'ctx' é injetado automaticamente pelo framework.
+                    # Apenas os argumentos da ferramenta são passados.
+                    result_object = await client.call_tool(
+                        "generate_organization_plan",
+                        directory_path=directory,
+                        user_goal=goal
                     )
                     await websocket.send_json({"type": "plan_result", "data": result_object.data})
 
                 elif action == "process_feed":
-                    await client.call_tool("process_latest_posts")
+                    await client.call_tool("process_latest_posts", ctx=ctx)
                     await websocket.send_json({"type": "log", "level": "info", "message": "SummarizerAgent processou o feed. Atualize a página do feed para ver os resultados."})
                 else:
                     await websocket.send_json({"type": "error", "message": f"Ação desconhecida: {action}"})
