@@ -4,7 +4,7 @@ from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from typing import Callable, Awaitable
-from hub import hub_mcp
+from file_organizer.backend.hub import hub_mcp
 from fastmcp import Client
 
 class AsyncWatcherEventHandler(FileSystemEventHandler):

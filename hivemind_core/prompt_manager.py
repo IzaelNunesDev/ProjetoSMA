@@ -1,4 +1,3 @@
-# file-organizer/prompt_manager.py (novo arquivo)
 import json
 from pathlib import Path
 
@@ -41,4 +40,4 @@ class PromptManager:
         return None
 
 # Singleton para ser usado em toda a aplicação
-prompt_manager = PromptManager()
+prompt_manager = PromptManager() 

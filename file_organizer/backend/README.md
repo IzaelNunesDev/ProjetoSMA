@@ -12,7 +12,7 @@ Sistema inteligente de organização de arquivos com interface web.
 ```bash
 # Clone o repositório (se ainda não fez)
 git clone <seu-repositorio>
-cd file-organizer/backend
+cd file_organizer/backend
 
 # Execute o script de setup
 ./setup.sh

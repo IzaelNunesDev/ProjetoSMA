@@ -1,24 +1,24 @@
-# file-organizer/backend/hub.py
+# file_organizer/backend/hub.py
 
 import asyncio
 import json
 from pathlib import Path
 from fastmcp import FastMCP, Context, Client
 from rich.console import Console
-from context_manager import ContextManager
-from checkpoint_manager import CheckpointManager
+from file_organizer.backend.context_manager import ContextManager
+from file_organizer.backend.checkpoint_manager import CheckpointManager
 
 # Importa as FUNÇÕES dos agentes diretamente
-from agents.scanner_agent import scan_directory, summarize_scan_results
-from agents.categorizer_agent import categorize_items
-from agents.planner_agent import build_plan_from_categorization
-from agents.rules_agent import apply_categorization_rules
-from agents.executor_agent import create_folder, move_file, move_folder
-from agents.suggestion_agent import suggest_file_move
-from agents.memory_agent import index_directory, query_memory, post_memory_experience, get_feed_for_agent
-from agents.maintenance_agent import find_empty_folders
-from agents.digest_agent import get_tree_summary
-from agents.tree_categorizer_agent import categorize_from_tree
+from agents.file_organizer.scanner import scan_directory, summarize_scan_results
+from agents.file_organizer.categorizer import categorize_items
+from agents.file_organizer.planner import build_plan_from_categorization
+from agents.file_organizer.rules import apply_categorization_rules
+from agents.file_organizer.executor import create_folder, move_file, move_folder
+from agents.file_organizer.suggestion import suggest_file_move
+from hivemind_core.memory_manager import index_directory, query_memory, post_memory_experience, get_feed_for_agent
+from agents.file_organizer.maintenance import find_empty_folders
+from agents.file_organizer.digest import get_tree_summary
+from agents.file_organizer.tree_categorizer import categorize_from_tree
 
 from agents.maintenance_agent import find_empty_folders, find_duplicates
 
