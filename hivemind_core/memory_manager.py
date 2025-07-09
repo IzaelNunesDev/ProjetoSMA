@@ -71,4 +71,36 @@ async def query_memory(query: str, ctx: Context, top_k: int = 5) -> dict:
     return {"results": []} # Placeholder
 
 # Adicione get_feed_for_agent e update_entry_score se quiser, eles são genéricos.
-# REMOVEMOS: index_directory, remove_from_memory_index, update_memory_index 
+# REMOVEMOS: index_directory, remove_from_memory_index, update_memory_index
+
+@mcp.tool
+async def get_feed(ctx: Context, top_k: int = 50) -> List[dict]:
+    """Retorna as N memórias mais recentes do Hive Mind."""
+    if hive_mind_collection.count() == 0:
+        return []
+
+    # Recupera os N itens mais recentes. A ordenação por timestamp
+    # é feita após a busca, pois o ChromaDB não ordena nativamente por metadados.
+    results = hive_mind_collection.get(
+        limit=top_k,
+        include=["metadatas"]
+    )
+    
+    all_metadatas = results['metadatas']
+    
+    # Deserializa as tags se necessário
+    for meta in all_metadatas:
+        if 'tags' in meta and isinstance(meta.get('tags'), str):
+            try:
+                meta['tags'] = json.loads(meta['tags'])
+            except (json.JSONDecodeError, TypeError):
+                meta['tags'] = []
+    
+    # Ordenar o feed pela data, do mais novo para o mais antigo
+    sorted_feed = sorted(all_metadatas, key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    return sorted_feed
+
+def get_agent_mcp():
+    """Retorna a instância do FastMCP do agente para o loader."""
+    return mcp 

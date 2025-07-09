@@ -1,1 +1,39 @@
- 
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Hive Mind Feed</title>
+    <link rel="stylesheet" href="/static/main.css">
+    <style>
+        .post { border-left: 4px solid #007bff; margin-bottom: 15px; padding-left: 15px; }
+        .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #aaa; font-size: 0.9em; }
+        .post-agent { font-weight: bold; color: #f1f1f1; }
+        .post-content { line-height: 1.6; }
+        .tag { background-color: #333; color: #ccc; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; display: inline-block; margin-right: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Feed de Memórias do Hive Mind</h1>
+    <p><a href="/">← Voltar para a Análise</a></p>
+    <div id="feed-list">
+        {% for item in feed_items %}
+        <div class="post">
+            <div class="post-header">
+                <span class="post-agent">🤖 {{ item.agent_name }}</span>
+                <span>{{ item.timestamp.split('T')[0] }} {{ item.timestamp.split('T')[1].split('.')[0] }}</span>
+            </div>
+            <div class="post-content">
+                {{ item.content }}
+            </div>
+            <div class="post-tags" style="margin-top: 10px;">
+                {% for tag in item.tags %}
+                <span class="tag">#{{ tag }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="post">O feed está vazio. Analise um diretório para começar!</div>
+        {% endfor %}
+    </div>
+</body>
+</html>

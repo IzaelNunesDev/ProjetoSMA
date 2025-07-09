@@ -4,7 +4,7 @@ import google.generativeai as genai
 from fastmcp import FastMCP, Context
 from gitingest import ingest_async
 from hivemind_core.prompt_manager import prompt_manager
-from hivemind_core.memory_manager import post_entry # <-- IMPORTAR
+
 from datetime import datetime
 import uuid
 
@@ -67,7 +67,7 @@ async def analyze_directory_structure(directory_path: str, ctx: Context) -> dict
     analysis_text = suggestions.get("analysis", "Análise não gerada.")
     experience_content = f"Análise de estrutura para '{directory_path}'. Análise: {analysis_text}"
     
-    await post_entry.fn(ctx=ctx, entry={
+    await ctx.hub.call_tool("post_entry", entry={
         "entry_id": str(uuid.uuid4()),
         "agent_name": "FileOrganizerAgent",
         "entry_type": "STRUCTURE_ANALYSIS",
@@ -86,5 +86,6 @@ async def analyze_directory_structure(directory_path: str, ctx: Context) -> dict
         "result": suggestions
     }
 
-# Exportação explícita do MCP para o loader
-__all__ = ["mcp"] 
+def get_agent_mcp():
+    """Retorna a instância do FastMCP do agente para o loader."""
+    return mcp 
