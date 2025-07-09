@@ -1,91 +1,96 @@
+# agents/file_organizer/main.py (VERSÃO FINAL PARA VISUALIZAÇÃO)
+
 import os
 import json
+import uuid
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List, Tuple
 import google.generativeai as genai
 from fastmcp import FastMCP, Context
-from gitingest import ingest_async
-from hivemind_core.prompt_manager import prompt_manager
 
-from datetime import datetime
-import uuid
+# Importando os utilitários de scanner diretamente para este módulo
+import fitz  # PyMuPDF
+from PIL import Image
+import pytesseract
+from magika import Magika
 
-# Configuração do agente
-mcp = FastMCP(name="FileOrganizerAgent")
+# --- Início dos Utilitários de Scanner (Lógica do antigo scanner_agent) ---
+magika_instance = Magika()
+CONTENT_LIMIT = 250
+SUPPORTED_CONTENT_EXTS = {".txt", ".pdf", ".md", ".py", ".js", ".json", ".html", ".css", ".jpg", ".jpeg", ".png", ".tiff"}
+EXCLUDED_DIRS = {"node_modules", "venv", ".venv", "__pycache__", ".git", ".vscode", "target", "build", "dist", "out"}
 
-# Excluir padrões comuns para a análise da árvore
-default_exclude = {
-    "*.exe", "*.iso", "*.db*", "*.dll", "*.so", "*.zip", "*.rar",
-    "*.jpg", "*.png", "*.gif", "node_modules/**", "__pycache__/**",
-    "venv/**", ".venv/**", ".git/**", "target/**", "build/**"
+def _extract_content(file_path: Path) -> str:
+    ext = file_path.suffix.lower()
+    content = ""
+    try:
+        if ext in ['.jpg', '.jpeg', '.png', '.tiff']:
+            content = pytesseract.image_to_string(Image.open(file_path), lang='por+eng')
+        elif ext == ".pdf":
+            with fitz.open(file_path) as doc:
+                content = "".join(page.get_text() for page in doc)
+        elif ext in SUPPORTED_CONTENT_EXTS:
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return "" # Retorna vazio se houver qualquer erro na extração
+    return content[:CONTENT_LIMIT]
+# --- Fim dos Utilitários de Scanner ---
+
+
+# --- Início dos Utilitários de Regras (Lógica do antigo rules_agent) ---
+RULES = {
+    "Imagens": {"extensions": [".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp", ".tiff"]},
+    "Documentos": {"extensions": [".pdf", ".docx", ".doc", ".txt", ".md", ".odt"]},
+    "Instaladores": {"extensions": [".exe", ".msi", ".dmg"]},
+    "Arquivos Compactados": {"extensions": [".zip", ".rar", ".7z", ".tar.gz"]}
 }
 
-@mcp.tool
-async def get_tree_summary(root_path: str, ctx: Context) -> str:
-    """Usa gitingest para gerar uma árvore textual da estrutura de diretórios."""
-    try:
-        await ctx.log(f"Gerando 'tree' para: {root_path}", level="info")
-        _, tree, _ = await ingest_async(
-            source=root_path,
-            exclude_patterns=default_exclude,
-            output=None
-        )
-        return tree
-    except Exception as e:
-        await ctx.log(f"Erro ao gerar árvore: {e}", level="error")
-        return ""
+def _apply_rules(items: List[Dict]) -> Tuple[Dict[str, str], List[Dict]]:
+    categorized_by_rules = {}
+    remaining_items = []
+    for item in items:
+        path = Path(item['path'])
+        ext = ''.join(path.suffixes).lower() # Lida com ex: .tar.gz
+        categorized = False
+        for category, rule in RULES.items():
+            if ext in rule.get("extensions", []):
+                categorized_by_rules[item['path']] = category
+                categorized = True
+                break
+        if not categorized:
+            remaining_items.append(item)
+    return categorized_by_rules, remaining_items
+# --- Fim dos Utilitários de Regras ---
+
+# --- Configuração do Agente ---
+mcp = FastMCP(name="FileOrganizerAgent")
 
 @mcp.tool
-async def categorize_from_tree(tree_text: str, ctx: Context) -> dict:
-    """Usa um LLM para analisar a árvore de diretórios e sugerir reorganizações."""
-    prompt = prompt_manager.format_prompt("tree-categorizer", tree=tree_text)
-    if not prompt:
-        raise ValueError("Prompt 'tree-categorizer' não encontrado.")
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash',
-            generation_config=genai.GenerationConfig(response_mime_type="application/json"))
-        response = await model.generate_content_async(prompt)
-        return json.loads(response.text)
-    except Exception as e:
-        await ctx.log(f"Erro na análise do LLM: {e}", level="error")
-        return {"analysis": f"Erro ao analisar: {e}", "suggestions": []}
+async def _scan_directory(directory_path: str, ctx: Context) -> list[dict]:
+    """Escaneia um diretório, extraindo metadados e resumos de conteúdo."""
+    await ctx.log(f"Iniciando escaneamento em: {directory_path}", level="info")
+    root = Path(directory_path).expanduser().resolve()
+    resultados = []
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+        current_dir = Path(dirpath)
+        
+        for name in filenames:
+            file_path = current_dir / name
+            try:
+                stat = file_path.stat()
+                metadata = {
+                    "path": str(file_path), "name": name,
+                    "ext": ''.join(file_path.suffixes).lower(),
+                    "content_summary": "", # Desabilitado para testes rápidos
+                }
+                resultados.append(metadata)
+            except Exception as e:
+                await ctx.log(f"Não foi possível ler o arquivo {file_path}: {e}", level="warning")
+                continue
+    return resultados
 
 @mcp.tool
-async def analyze_directory_structure(directory_path: str, ctx: Context) -> dict:
-    """Orquestra o fluxo de análise de estrutura de diretórios."""
-    await ctx.log("Iniciando análise de estrutura...", level="info")
-    
-    tree_text = await get_tree_summary.fn(root_path=directory_path, ctx=ctx)
-    if not tree_text:
-        msg = "Falha ao gerar a estrutura de diretórios. O diretório pode estar inacessível."
-        await ctx.log(msg, level="error")
-        return {"status": "error", "details": msg}
-    
-    await ctx.log(f"Estrutura detectada:\n{tree_text}", level="info")
-    
-    suggestions = await categorize_from_tree.fn(tree_text=tree_text, ctx=ctx)
-    
-    # NOVO: Postar o resultado no Hive Mind
-    analysis_text = suggestions.get("analysis", "Análise não gerada.")
-    experience_content = f"Análise de estrutura para '{directory_path}'. Análise: {analysis_text}"
-    
-    await ctx.hub.call_tool("post_entry", entry={
-        "entry_id": str(uuid.uuid4()),
-        "agent_name": "FileOrganizerAgent",
-        "entry_type": "STRUCTURE_ANALYSIS",
-        "timestamp": datetime.utcnow().isoformat(),
-        "content": experience_content,
-        "context": {"directory": directory_path, "suggestions_count": len(suggestions.get("suggestions", []))},
-        "tags": ["file_organizer", "analysis"],
-        "utility_score": 0.0,
-        "references_entry_id": None
-    })
-    
-    await ctx.log("Análise concluída e registrada no Hive Mind.", level="info")
-    return {
-        "status": "completed",
-        "tree": tree_text,
-        "result": suggestions
-    }
-
-def get_agent_mcp():
-    """Retorna a instância do FastMCP do agente para o loader."""
-    return mcp 
+async def _categorize_with_llm(user_goal: str, items_to_categorize: list, ctx: Context) -> Dict[str, str]:
+    """Usa um LLM para categorizar itens não cobertos por regras.""" 

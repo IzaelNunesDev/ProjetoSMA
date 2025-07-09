@@ -2,20 +2,35 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Hive Mind - Análise de Estrutura</title>
+    <title>Hive Mind - Organizador de Arquivos</title>
     <link rel="stylesheet" href="/static/main.css">
+    <style>
+        .plan-container { margin-top: 2em; background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 1.5em; line-height: 1.6; }
+        .plan-step { background-color: #2a2a2e; padding: 10px; border-radius: 4px; margin-bottom: 8px; font-family: 'Courier New', Courier, monospace; font-size: 0.9em; }
+        .plan-step .action { color: #f9ca24; font-weight: bold; }
+        .log-panel { max-height: 200px; overflow-y: auto; background: #000; padding: 10px; border-radius: 5px; margin-top: 1em; font-family: monospace; font-size: 0.8em; }
+        .log-message.info { color: #aaa; }
+        .log-message.warning { color: #f9ca24; }
+        .log-message.error { color: #ff6b6b; }
+    </style>
 </head>
 <body>
-    <div style="text-align: right; margin-bottom: 20px;">
-        <a href="/feed" target="_blank">Ver Feed do Hive Mind ↗️</a>
+    <div style="max-width: 800px; margin: auto;">
+        <div style="text-align: right; margin-bottom: 20px;">
+            <a href="/feed" target="_blank">Ver Feed do Hive Mind ↗️</a>
+        </div>
+        <h1>Hive Mind - Gerador de Plano de Organização</h1>
+        <p>Forneça um diretório e um objetivo para que o agente especialista crie uma sugestão de organização.</p>
+        
+        <div id="form-container" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <input type="text" id="directoryInput" placeholder="Caminho do diretório" style="flex: 2;">
+            <input type="text" id="goalInput" placeholder="Objetivo (ex: organizar por tipo)" style="flex: 2;">
+            <button id="generatePlanBtn" style="flex: 1;">Gerar Plano</button>
+            <button id="summarizeBtn" style="background-color: #28a745; width: 100%; margin-top: 5px;">Acionar Agente Resumidor</button>
+        </div>
+
+        <div id="result-container"></div>
     </div>
-    <h1>Hive Mind - Análise de Estrutura de Diretórios</h1>
-    <div>
-        <input type="text" id="directoryInput" placeholder="Digite o caminho do diretório" style="width: 300px;">
-        <button id="analyzeBtn">Analisar Estrutura</button>
-<button id="summarizeBtn" style="background-color: #28a745;">Processar Feed (Summarizer)</button>
-    </div>
-    <div id="result" style="margin-top: 2em; background: #2a2a2e; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; padding: 1em;"></div>
     <script src="/static/js/main.js"></script>
 </body>
 </html>
