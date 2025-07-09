@@ -26,6 +26,7 @@ def _apply_rules(items: List[Dict]) -> Tuple[Dict[str, str], List[Dict]]:
         path = Path(item['path'])
         # Ignora pastas nesta fase, apenas arquivos são categorizados por regras
         if path.is_file():
+            # Usa a extensão completa (ex: .tar.gz)
             ext = ''.join(path.suffixes).lower()
             categorized = False
             for category, rule in RULES.items():
@@ -88,10 +89,10 @@ async def _categorize_with_llm(user_goal: str, items_to_categorize: list, ctx: C
     ```
 
     **Instruções:**
-    1.  Analise cada caminho na lista.
-    2.  Crie nomes de categoria lógicos e concisos (ex: "Projetos Python", "Documentos Fiscais", "Fotos de Viagem").
-    3.  Se um item não tiver uma categoria clara ou parecer lixo, atribua a categoria "_a_revisar".
-    4.  Sua resposta deve ser **APENAS** um único objeto JSON onde a chave é o caminho completo do item e o valor é a string da categoria de destino.
+    1. Analise cada caminho na lista. Considere o nome do arquivo/pasta para deduzir seu conteúdo.
+    2. Crie nomes de categoria lógicos e concisos (ex: "Projetos Python", "Documentos Fiscais", "Fotos de Viagem").
+    3. Se um item não tiver uma categoria clara ou parecer lixo, atribua a categoria "_a_revisar".
+    4. Sua resposta deve ser **APENAS** um único objeto JSON onde a chave é o caminho completo do item e o valor é a string da categoria de destino.
 
     **Exemplo de Saída JSON:**
     ```json
@@ -105,7 +106,8 @@ async def _categorize_with_llm(user_goal: str, items_to_categorize: list, ctx: C
     """
     
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Use o gemini-1.5-flash que é mais rápido e mais barato para esta tarefa
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = await model.generate_content_async(prompt)
         
         # Limpeza robusta da resposta para garantir que seja um JSON válido
@@ -117,7 +119,10 @@ async def _categorize_with_llm(user_goal: str, items_to_categorize: list, ctx: C
         await ctx.log(f"Categorização com IA concluída com sucesso. {len(categorization_map)} itens categorizados.", level="info")
         return categorization_map
     except (json.JSONDecodeError, IndexError, Exception) as e:
-        await ctx.log(f"Erro crítico ao categorizar com IA: {e}\nResposta recebida: {response.text}", level="error")
+        response_text = "N/A"
+        if 'response' in locals() and hasattr(response, 'text'):
+            response_text = response.text
+        await ctx.log(f"Erro crítico ao categorizar com IA: {e}\nResposta recebida: {response_text}", level="error")
         # Retorna um mapa vazio em caso de erro para não quebrar o fluxo
         return {}
 
@@ -149,8 +154,8 @@ async def _build_plan(root_directory: str, categorization_map: Dict[str, str], c
         dest_folder = root_dir / safe_category_name
         
         if original_path.is_dir():
-            # O destino de uma pasta é a pasta da categoria, o `shutil.move` cuidará do resto
-            to_path = str(dest_folder / original_path.name)
+            # O destino de uma pasta é a pasta da categoria, o shutil.move fará a movimentação para DENTRO dela.
+            to_path = str(dest_folder)
             steps.append({"action": "MOVE_FOLDER", "from": str(original_path), "to": to_path})
         elif original_path.is_file():
             to_path = str(dest_folder / original_path.name)
@@ -179,7 +184,9 @@ async def generate_organization_plan(directory_path: str, user_goal: str, ctx: C
     await ctx.log(f"{len(rule_map)} arquivos categorizados por regras.", level="info")
 
     # 3. LLM (CHAMADA ÚNICA)
-    llm_map = await _categorize_with_llm.fn(user_goal=user_goal, items_to_categorize=items_for_llm, ctx=ctx)
+    llm_map = {}
+    if items_for_llm:
+        llm_map = await _categorize_with_llm.fn(user_goal=user_goal, items_to_categorize=items_for_llm, ctx=ctx)
     
     # 4. COMBINAR E CONSTRUIR PLANO
     full_categorization_map = {**rule_map, **llm_map}
@@ -200,7 +207,6 @@ async def generate_organization_plan(directory_path: str, user_goal: str, ctx: C
         await ctx.log("Plano gerado e registrado com sucesso no Hive Mind.", level="info")
     except Exception as e:
          await ctx.log(f"Aviso: Falha ao registrar plano no Hive Mind: {e}", level="warning")
-
 
     return {"status": "plan_generated", "plan": plan}
 

@@ -29,13 +29,14 @@ async def load_agents_from_directory(hub_mcp: Any):
                     # PADRÃO CORRIGIDO: Usar get_agent_mcp() para obter a instância do agente
                     if hasattr(module, 'get_agent_mcp'):
                         agent_mcp = module.get_agent_mcp()
-                        agent_tools = await agent_mcp.get_tools()
+                        # Acessa diretamente o dicionário de ferramentas para obter os objetos completos
+                        agent_tools_dict = agent_mcp._tool_manager._tools
                         
-                        for tool in agent_tools:
-                            hub_mcp.add_tool(tool)
+                        for tool_object in agent_tools_dict.values():
+                            hub_mcp.add_tool(tool_object)
                         
-                        if agent_tools:
-                            print(f"  -> Módulo '{agent_name}' ({base_dir}) carregado com {len(agent_tools)} ferramentas.")
+                        if agent_tools_dict:
+                            print(f"  -> Módulo '{agent_name}' ({base_dir}) carregado com {len(agent_tools_dict)} ferramentas.")
                     else:
                         print(f"AVISO: Agente '{agent_name}' não possui a função get_agent_mcp(). Nenhuma ferramenta carregada.")
 
