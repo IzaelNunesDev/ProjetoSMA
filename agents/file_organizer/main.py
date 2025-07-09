@@ -4,6 +4,9 @@ import google.generativeai as genai
 from fastmcp import FastMCP, Context
 from gitingest import ingest_async
 from hivemind_core.prompt_manager import prompt_manager
+from hivemind_core.memory_manager import post_entry # <-- IMPORTAR
+from datetime import datetime
+import uuid
 
 # Configuração do agente
 mcp = FastMCP(name="FileOrganizerAgent")
@@ -60,7 +63,23 @@ async def analyze_directory_structure(directory_path: str, ctx: Context) -> dict
     
     suggestions = await categorize_from_tree.fn(tree_text=tree_text, ctx=ctx)
     
-    await ctx.log("Análise concluída.", level="info")
+    # NOVO: Postar o resultado no Hive Mind
+    analysis_text = suggestions.get("analysis", "Análise não gerada.")
+    experience_content = f"Análise de estrutura para '{directory_path}'. Análise: {analysis_text}"
+    
+    await post_entry.fn(ctx=ctx, entry={
+        "entry_id": str(uuid.uuid4()),
+        "agent_name": "FileOrganizerAgent",
+        "entry_type": "STRUCTURE_ANALYSIS",
+        "timestamp": datetime.utcnow().isoformat(),
+        "content": experience_content,
+        "context": {"directory": directory_path, "suggestions_count": len(suggestions.get("suggestions", []))},
+        "tags": ["file_organizer", "analysis"],
+        "utility_score": 0.0,
+        "references_entry_id": None
+    })
+    
+    await ctx.log("Análise concluída e registrada no Hive Mind.", level="info")
     return {
         "status": "completed",
         "tree": tree_text,
