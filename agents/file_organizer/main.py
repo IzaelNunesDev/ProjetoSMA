@@ -64,32 +64,42 @@ async def _scan_directory_fast(directory_path: str, ctx: Context) -> list[dict]:
 
 @mcp.tool
 async def _categorize_with_llm(user_goal: str, items_to_categorize: list, ctx: Context) -> Dict[str, str]:
-    """Usa um LLM para categorizar itens com base APENAS em seus caminhos."""
+    """Usa um LLM para categorizar itens em lotes (batches) para evitar timeouts."""
     if not items_to_categorize: return {}
-    
-    # ## MUDANÇA PRINCIPAL ##: Enviamos apenas a lista de caminhos, não o conteúdo.
-    paths_only = [item['path'] for item in items_to_categorize]
-    
-    await ctx.log(f" Categorizando {len(paths_only)} itens com IA (baseado em nomes)...", level="info")
-    
-    prompt = f"""
-    Sua tarefa é categorizar a seguinte lista de arquivos com base em seus nomes, extensões e caminhos, de acordo com o objetivo do usuário.
-    Objetivo: "{user_goal}"
-    
-    Lista de caminhos dos arquivos:
-    {json.dumps(paths_only, indent=2)}
 
-    Retorne APENAS um objeto JSON onde a chave é o caminho completo do arquivo e o valor é a string da categoria de destino (ex: "Projetos de Jogo", "Relatórios Financeiros", "Fotos de Viagem").
-    Se não souber, use a categoria "_a_revisar".
-    """
-    try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        response = await model.generate_content_async(prompt)
-        json_str = response.text.strip().replace('```json', '').replace('```', '')
-        return json.loads(json_str)
-    except (json.JSONDecodeError, IndexError) as e:
-        await ctx.log(f"Erro ao decodificar resposta do LLM: {e}\nResposta: {response.text}", level="error")
-        return {}
+    BATCH_SIZE = 50  # Processar 50 arquivos por vez
+    full_categorization = {}
+    paths_only = [item['path'] for item in items_to_categorize]
+
+    await ctx.log(f"Iniciando categorização com IA para {len(paths_only)} itens em lotes de {BATCH_SIZE}.", level="info")
+
+    for i in range(0, len(paths_only), BATCH_SIZE):
+        batch_paths = paths_only[i:i + BATCH_SIZE]
+        await ctx.log(f"Processando lote {i//BATCH_SIZE + 1}... ({len(batch_paths)} itens)", level="info")
+
+        prompt = f"""
+        Sua tarefa é categorizar a seguinte lista de arquivos com base em seus nomes, extensões e caminhos, de acordo com o objetivo do usuário.
+        Objetivo: "{user_goal}"
+        
+        Lista de caminhos dos arquivos:
+        {json.dumps(batch_paths, indent=2)}
+
+        Retorne APENAS um objeto JSON onde a chave é o caminho completo do arquivo e o valor é a string da categoria de destino (ex: "Projetos de Jogo", "Relatórios Financeiros", "Fotos de Viagem").
+        Se um arquivo não puder ser categorizado, atribua a ele a categoria "_a_revisar".
+        """
+        
+        try:
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = await model.generate_content_async(prompt)
+            json_str = response.text.strip().replace('```json', '').replace('```', '')
+            batch_result = json.loads(json_str)
+            full_categorization.update(batch_result)
+        except (json.JSONDecodeError, IndexError, Exception) as e:
+            await ctx.log(f"Erro ao processar lote: {e}. Pulando este lote.", level="error")
+            continue
+
+    await ctx.log(f"Categorização com IA concluída. {len(full_categorization)} itens categorizados.", level="info")
+    return full_categorization
 
 @mcp.tool
 async def _build_plan(root_directory: str, categorization_map: Dict[str, str]) -> Dict:
