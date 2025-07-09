@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any
 
-def load_agents_from_directory(agents_dir: str, hub_mcp: Any):
+async def load_agents_from_directory(agents_dir: str, hub_mcp: Any):
     """Carrega todos os agentes do diretório especificado e registra suas ferramentas no hub_mcp."""
     sys.path.insert(0, os.path.abspath(agents_dir))
     for root, dirs, files in os.walk(agents_dir):
@@ -14,7 +14,9 @@ def load_agents_from_directory(agents_dir: str, hub_mcp: Any):
                 try:
                     module = importlib.import_module(module_name)
                     if hasattr(module, 'mcp'):
-                        for tool in getattr(module, 'mcp').get_tools():
-                            hub_mcp.add_tool(tool)
+                        agent_mcp = getattr(module, 'mcp')
+                        if hasattr(agent_mcp, 'tools') and isinstance(agent_mcp.tools, dict):
+                            for tool_name, tool_object in agent_mcp.tools.items():
+                                hub_mcp.add_tool(tool_object)
                 except Exception as e:
                     print(f"Erro ao importar agente {module_name}: {e}") 

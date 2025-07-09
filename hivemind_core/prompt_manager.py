@@ -3,7 +3,8 @@ from pathlib import Path
 
 class PromptManager:
     def __init__(self, prompts_directory: str = "prompts"):
-        self.base_path = Path(__file__).parent / prompts_directory
+        # Agora busca a partir do diretório de trabalho atual
+        self.base_path = Path.cwd() / prompts_directory
         self.prompts = self._load_prompts()
 
     def _load_prompts(self):
