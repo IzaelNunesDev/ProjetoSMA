@@ -71,8 +71,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_json({"type": "error", "message": "Caminho do diretório é inválido."})
                         continue
                     
-                    # Log para depuração
-                    await log_handler(f"Chamando 'generate_organization_plan' com diretório: {directory}", "debug")
+                    # Log para depuração - CORREÇÃO:
+                    # A chamada direta a log_handler causava um TypeError. Agora enviamos a mensagem JSON diretamente.
+                    await websocket.send_json({"type": "log", "level": "debug", "message": f"Chamando 'generate_organization_plan' com diretório: {directory}"})
                     
                     # CORREÇÃO: Os argumentos da ferramenta devem ser passados como um dicionário
                     # no segundo argumento de `call_tool`, não como keyword arguments.
