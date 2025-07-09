@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastmcp import FastMCP, Client, Context
+from fastmcp.client.logging import LogMessage
 from hivemind_core.agent_loader import load_agents_from_directory
 
 # --- Lógica de Inicialização (Lifespan) ---
@@ -47,10 +48,12 @@ async def get_feed_page(request: Request):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    # Criar um contexto de log para este websocket específico
-    async def log_handler(message: str, level: str):
-        await websocket.send_json({"type": "log", "level": level, "message": message})
-    # O Context não aceita mais o log_handler, ele deve ser passado para o Client.
+    # CORREÇÃO: O log_handler recebe um único objeto `LogMessage`, não dois argumentos.
+    # A assinatura da função foi corrigida.
+    async def log_handler(message: LogMessage):
+        await websocket.send_json({"type": "log", "level": message.level, "message": message.data})
+
+    # Este contexto é usado para chamadas do lado do servidor que não passam pelo Client.
     ctx = Context(hub_mcp)
 
     try:
@@ -71,18 +74,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Log para depuração
                     await log_handler(f"Chamando 'generate_organization_plan' com diretório: {directory}", "debug")
                     
-                    # CORREÇÃO FINAL: Argumentos são desempacotados como keywords.
-                    # CORREÇÃO FINAL: O 'ctx' é injetado automaticamente pelo framework.
-                    # Apenas os argumentos da ferramenta são passados.
+                    # CORREÇÃO: Os argumentos da ferramenta devem ser passados como um dicionário
+                    # no segundo argumento de `call_tool`, não como keyword arguments.
                     result_object = await client.call_tool(
                         "generate_organization_plan",
-                        directory_path=directory,
-                        user_goal=goal
+                        {
+                            "directory_path": directory,
+                            "user_goal": goal
+                        }
                     )
                     await websocket.send_json({"type": "plan_result", "data": result_object.data})
 
                 elif action == "process_feed":
-                    await client.call_tool("process_latest_posts", ctx=ctx)
+                    # O 'ctx' é injetado automaticamente pelo framework.
+                    # Esta ferramenta não recebe outros argumentos, então a chamada é correta.
+                    await client.call_tool("process_latest_posts") 
                     await websocket.send_json({"type": "log", "level": "info", "message": "SummarizerAgent processou o feed. Atualize a página do feed para ver os resultados."})
                 else:
                     await websocket.send_json({"type": "error", "message": f"Ação desconhecida: {action}"})

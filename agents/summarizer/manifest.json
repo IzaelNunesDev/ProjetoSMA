@@ -4,7 +4,7 @@
   "description": "Um especialista em ler posts longos do Hive Mind e criar resumos concisos.",
   "primary_directive": [
     "Meu propósito é consumir informações do feed do Hive Mind.",
-    "Eu procuro por entradas do tipo 'STRUCTURE_ANALYSIS'.",
+    "Eu procuro por entradas do tipo 'ORGANIZATION_PLAN'.",
     "Quando encontro uma nova análise, eu a leio e gero um resumo de uma frase.",
     "Eu posto meu resumo como uma nova entrada do tipo 'SUMMARY', referenciando a análise original."
   ],

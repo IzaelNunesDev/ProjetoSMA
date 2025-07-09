@@ -191,13 +191,15 @@ async def generate_organization_plan(directory_path: str, user_goal: str, ctx: C
     plan = await _build_plan.fn(root_directory=directory_path, categorization_map=full_categorization_map, ctx=ctx)
     
     try:
-        await ctx.hub.call_tool("post_entry", entry={
+        # CORREÇÃO: A chamada de uma ferramenta a partir de outra ferramenta usa `ctx.call_tool` diretamente.
+        # O atributo `.hub` não é mais necessário e a ferramenta `post_entry` espera os args aninhados.
+        await ctx.call_tool("post_entry", { "entry": {
             "entry_id": str(uuid.uuid4()), "agent_name": mcp.name,
             "entry_type": "ORGANIZATION_PLAN", "timestamp": datetime.utcnow().isoformat(),
             "content": f"Plano gerado para '{Path(directory_path).name}'. Passos: {len(plan.get('steps', []))}",
             "context": {"directory": directory_path, "goal": user_goal, "plan": plan},
             "tags": ["organization", "planning", "suggestion"], "utility_score": 0.0, "references_entry_id": None
-        })
+        }})
         await ctx.log("Plano gerado e registrado no Hive Mind.", level="info")
     except Exception as e:
          await ctx.log(f"Aviso: Falha ao registrar plano no Hive Mind: {e}", level="warning")
