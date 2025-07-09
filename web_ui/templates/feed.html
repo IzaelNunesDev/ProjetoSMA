@@ -5,75 +5,78 @@
     <title>Hive Mind Feed</title>
     <link rel="stylesheet" href="/static/main.css">
     <style>
-        .post { border-left: 4px solid #007bff; margin-bottom: 15px; padding-left: 15px; }
+        .post { border-left: 4px solid #007bff; margin-bottom: 20px; padding-left: 15px; background: #1e1e1e; padding: 15px; border-radius: 8px; }
+        .post-reply { border-left: 4px solid #28a745; margin-left: 30px; margin-top: 15px; background: #252525; }
         .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; color: #aaa; font-size: 0.9em; }
         .post-agent { font-weight: bold; color: #f1f1f1; }
         .post-content { line-height: 1.6; }
         .tag { background-color: #333; color: #ccc; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; display: inline-block; margin-right: 5px; }
+        .like-btn { background: #333; border: 1px solid #555; cursor: pointer; color: #ccc; }
+        .like-btn:disabled { background: #28a745; color: white; cursor: not-allowed; }
     </style>
 </head>
 <body>
     <h1>Feed de Memórias do Hive Mind</h1>
     <p><a href="/">← Voltar para a Análise</a></p>
-
-    <hr>
-    <h2>Ações dos Agentes</h2>
-    <div>
-        <input type="text" id="directoryInput" placeholder="Digite o caminho do diretório para analisar" style="width: 300px;">
-        <button id="analyzeBtn">Analisar Estrutura</button>
-        <button id="summarizeBtn" style="background-color: #28a745;">Processar Feed (Summarizer)</button>
-    </div>
-    <div id="result" style="margin-top: 1em; margin-bottom: 2em; background: #2a2a2e; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; padding: 1em; min-height: 24px;"></div>
     <hr style="margin-bottom: 2em;">
 
     <div id="feed-list">
-        {% for item in feed_items %}
+        {% set entry_map = {} %}
+        {% for item in feed_items %}{% set _ = entry_map.update({item.entry_id: item}) %}{% endfor %}
+
+        {% for item in feed_items if not item.references_entry_id %}
         <div class="post">
             <div class="post-header">
                 <span class="post-agent">🤖 {{ item.agent_name }}</span>
-                <p><small>Score: <span class="score">0.00</span></small> <button class="like-btn" data-id="{{ item.entry_id }}">👍 Like</button></p>
+                <div>
+                    <small>Score: <span class="score">{{ "%.2f"|format(item.utility_score) }}</span></small>
+                    <button class="like-btn" data-id="{{ item.entry_id }}">👍 Like</button>
+                </div>
                 <span>{{ item.timestamp.split('T')[0] }} {{ item.timestamp.split('T')[1].split('.')[0] }}</span>
             </div>
-            <div class="post-content">
-                {{ item.content }}
-            </div>
+            <div class="post-content">{{ item.content }}</div>
             <div class="post-tags" style="margin-top: 10px;">
-                {% for tag in item.tags %}
-                <span class="tag">#{{ tag }}</span>
-                {% endfor %}
+                {% for tag in item.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
             </div>
+
+            <!-- Renderiza as respostas/resumos -->
+            {% for reply in feed_items if reply.references_entry_id == item.entry_id %}
+            <div class="post post-reply">
+                <div class="post-header">
+                    <span class="post-agent">↳ 🤖 {{ reply.agent_name }}</span>
+                    <span>{{ reply.timestamp.split('T')[0] }}</span>
+                </div>
+                <div class="post-content">{{ reply.content }}</div>
+            </div>
+            {% endfor %}
         </div>
-        {% else %}
-        <div class="post">O feed está vazio. Analise um diretório para começar!</div>
         {% endfor %}
+        {% if not feed_items %}
+            <div class="post">O feed está vazio. Analise um diretório para começar!</div>
+        {% endif %}
     </div>
-<script src="/static/js/main.js"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.like-btn').forEach(button => {
         button.addEventListener('click', async () => {
             const entryId = button.dataset.id;
+            button.disabled = true;
             try {
-                const response = await fetch(`/api/like_entry/${entryId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
+                const response = await fetch(`/api/like_entry/${entryId}`, { method: 'POST' });
                 if (response.ok) {
                     const data = await response.json();
-                    // Encontra o elemento de score correspondente e o atualiza
-                    const scoreElement = button.closest('.post-card').querySelector('.score');
+                    const scoreElement = button.parentElement.querySelector('.score');
                     scoreElement.textContent = data.new_score.toFixed(2);
-                    button.disabled = true; // Desabilita o botão após o like
                     button.textContent = '❤️ Liked';
                 } else {
-                    console.error('Failed to like post');
                     alert('Falha ao curtir o post.');
+                    button.disabled = false;
                 }
             } catch (error) {
                 console.error('Error:', error);
                 alert('Ocorreu um erro.');
+                button.disabled = false;
             }
         });
     });

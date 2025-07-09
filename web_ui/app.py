@@ -2,13 +2,11 @@ import json
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastmcp import FastMCP, Client
-
-# Importa o loader de agentes
 from hivemind_core.agent_loader import load_agents_from_directory
 
 # --- Lógica de Inicialização (Lifespan) ---
@@ -53,8 +51,8 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 @app.get("/", response_class=HTMLResponse)
-async def get_chat_page(request: Request):
-    return templates.TemplateResponse("feed.html", {"request": request, "entries": []})
+async def get_index_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/api/like_entry/{entry_id}")
 async def like_entry(entry_id: str):
@@ -69,7 +67,7 @@ async def like_entry(entry_id: str):
                 return {"status": "success", "new_score": result.data.get("new_score")}
             else:
                 error_message = result.data.get("message") if result.data else "Unknown error"
-                raise HTTPException(status_code=500, detail=f"Erro ao atualizar a pontuação: {error_message}")
+                raise HTTPException(status_code=404, detail=f"Erro ao atualizar pontuação: {error_message}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -86,7 +84,7 @@ async def get_feed_page(request: Request):
         print(f"Erro ao buscar feed: {e}")
     
     # O template já está pronto para receber os itens
-    return templates.TemplateResponse(request, "feed.html", {"feed_items": feed_items, "request": request})
+    return templates.TemplateResponse("feed.html", {"feed_items": feed_items, "request": request})
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
