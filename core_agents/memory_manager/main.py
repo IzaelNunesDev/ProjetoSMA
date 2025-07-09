@@ -101,6 +101,31 @@ async def get_feed(ctx: Context, top_k: int = 50) -> List[dict]:
     
     return sorted_feed
 
+@mcp.tool
+async def update_entry_score(entry_id: str, score_delta: float, ctx: Context) -> dict:
+    """Atualiza o utility_score de uma entrada do HiveMind."""
+    try:
+        entry = hive_mind_collection.get(ids=[entry_id], include=["metadatas"])
+        if not entry or not entry.get('metadatas'):
+            return {"status": "error", "message": "Entrada não encontrada."}
+        
+        meta = entry['metadatas'][0]
+        current_score = meta.get('utility_score', 0.0)
+        # Garante que o score seja float
+        if not isinstance(current_score, (int, float)):
+            current_score = 0.0
+
+        meta['utility_score'] = current_score + score_delta
+        
+        # Garante que tags sejam strings JSON para o ChromaDB
+        if 'tags' in meta and isinstance(meta['tags'], list):
+            meta['tags'] = json.dumps(meta['tags'])
+
+        hive_mind_collection.update(ids=[entry_id], metadatas=[meta])
+        return {"status": "success", "new_score": meta['utility_score']}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 def get_agent_mcp():
     """Retorna a instância do FastMCP do agente para o loader."""
     return mcp 

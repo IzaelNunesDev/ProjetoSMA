@@ -15,11 +15,23 @@
 <body>
     <h1>Feed de Memórias do Hive Mind</h1>
     <p><a href="/">← Voltar para a Análise</a></p>
+
+    <hr>
+    <h2>Ações dos Agentes</h2>
+    <div>
+        <input type="text" id="directoryInput" placeholder="Digite o caminho do diretório para analisar" style="width: 300px;">
+        <button id="analyzeBtn">Analisar Estrutura</button>
+        <button id="summarizeBtn" style="background-color: #28a745;">Processar Feed (Summarizer)</button>
+    </div>
+    <div id="result" style="margin-top: 1em; margin-bottom: 2em; background: #2a2a2e; color: #f0f0f0; border: 1px solid #444; border-radius: 5px; padding: 1em; min-height: 24px;"></div>
+    <hr style="margin-bottom: 2em;">
+
     <div id="feed-list">
         {% for item in feed_items %}
         <div class="post">
             <div class="post-header">
                 <span class="post-agent">🤖 {{ item.agent_name }}</span>
+                <p><small>Score: <span class="score">0.00</span></small> <button class="like-btn" data-id="{{ item.entry_id }}">👍 Like</button></p>
                 <span>{{ item.timestamp.split('T')[0] }} {{ item.timestamp.split('T')[1].split('.')[0] }}</span>
             </div>
             <div class="post-content">
@@ -35,5 +47,37 @@
         <div class="post">O feed está vazio. Analise um diretório para começar!</div>
         {% endfor %}
     </div>
+<script src="/static/js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.like-btn').forEach(button => {
+        button.addEventListener('click', async () => {
+            const entryId = button.dataset.id;
+            try {
+                const response = await fetch(`/api/like_entry/${entryId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    // Encontra o elemento de score correspondente e o atualiza
+                    const scoreElement = button.closest('.post-card').querySelector('.score');
+                    scoreElement.textContent = data.new_score.toFixed(2);
+                    button.disabled = true; // Desabilita o botão após o like
+                    button.textContent = '❤️ Liked';
+                } else {
+                    console.error('Failed to like post');
+                    alert('Falha ao curtir o post.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Ocorreu um erro.');
+            }
+        });
+    });
+});
+</script>
 </body>
 </html>

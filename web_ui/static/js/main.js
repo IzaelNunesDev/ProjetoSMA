@@ -59,6 +59,8 @@ ws.onmessage = (event) => {
     }
 };
 
+const summarizeBtn = document.getElementById('summarizeBtn');
+
 analyzeBtn.onclick = () => {
     const directory = directoryInput.value.trim();
     if (!directory) {
@@ -66,5 +68,10 @@ analyzeBtn.onclick = () => {
         return;
     }
     ws.send(JSON.stringify({ action: 'analyze_structure', directory }));
-    resultDiv.textContent = 'Analisando...';
+    resultDiv.textContent = 'Solicitação de análise enviada...';
+};
+
+summarizeBtn.onclick = () => {
+    ws.send(JSON.stringify({ action: 'process_feed' })); // Nova ação a ser criada no backend
+    resultDiv.textContent = 'SummarizerAgent está processando o feed...';
 };

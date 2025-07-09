@@ -15,10 +15,10 @@ from hivemind_core.agent_loader import load_agents_from_directory
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Código que roda ANTES do servidor iniciar
-    print("🤖 Carregando todos os agentes do Hive Mind...")
-    await load_agents_from_directory('agents', hub_mcp)
+    print(" Carregando todos os agentes do Hive Mind...")
+    await load_agents_from_directory(hub_mcp)
     tools = await hub_mcp.get_tools()
-    print(f"✅ Agentes carregados. Total de ferramentas no hub: {len(tools)}")
+    print(f" Agentes carregados. Total de ferramentas no hub: {len(tools)}")
     yield
     # Código que roda DEPOIS do servidor parar (se necessário)
     print(" gracefully shutting down.")
@@ -54,7 +54,24 @@ manager = ConnectionManager()
 
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_page(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"request": request})
+    return templates.TemplateResponse("feed.html", {"request": request, "entries": []})
+
+@app.post("/api/like_entry/{entry_id}")
+async def like_entry(entry_id: str):
+    """Endpoint para dar 'like' em uma entrada, aumentando seu utility_score."""
+    try:
+        async with Client(hub_mcp) as client:
+            result = await client.call_tool(
+                "update_entry_score", 
+                {"entry_id": entry_id, "score_delta": 0.1}
+            )
+            if result.data and result.data.get("status") == "success":
+                return {"status": "success", "new_score": result.data.get("new_score")}
+            else:
+                error_message = result.data.get("message") if result.data else "Unknown error"
+                raise HTTPException(status_code=500, detail=f"Erro ao atualizar a pontuação: {error_message}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/feed", response_class=HTMLResponse)
 async def get_feed_page(request: Request):
@@ -100,7 +117,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     except Exception as e:
                         import traceback
                         print(traceback.format_exc())
-                        await websocket.send_json({"type": "error", "message": f"Erro ao executar análise: {e}"})
+                        await websocket.send_json({"type": "log", "message": f"Análise do diretório '{directory}' concluída e postada no Hive Mind."})
+            elif action == "process_feed":
+                async with Client(hub_mcp) as client:
+                    try:
+                        # Chama a nova ferramenta do SummarizerAgent
+                        await client.call_tool("process_latest_posts", {})
+                        await websocket.send_json({"type": "log", "message": "SummarizerAgent processou o feed. Verifique a página do feed para ver os resultados."})
+                    except Exception as e:
+                        await websocket.send_json({"type": "error", "message": f"Erro ao processar o feed: {str(e)}"})
             else:
                 await websocket.send_json({"type": "error", "message": f"Ação desconhecida: {action}"})
     except WebSocketDisconnect:
