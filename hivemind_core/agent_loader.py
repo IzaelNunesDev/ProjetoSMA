@@ -15,8 +15,7 @@ async def load_agents_from_directory(agents_dir: str, hub_mcp: Any):
                     module = importlib.import_module(module_name)
                     if hasattr(module, 'mcp'):
                         agent_mcp = getattr(module, 'mcp')
-                        if hasattr(agent_mcp, 'tools') and isinstance(agent_mcp.tools, dict):
-                            for tool_name, tool_object in agent_mcp.tools.items():
-                                hub_mcp.add_tool(tool_object)
+                        for tool in agent_mcp:
+                            hub_mcp.add_tool(tool)
                 except Exception as e:
                     print(f"Erro ao importar agente {module_name}: {e}") 

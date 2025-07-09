@@ -12,7 +12,7 @@ from web_ui.app import app, hub_mcp # Importa app e hub da UI
 async def startup():
     print("🤖 Carregando todos os agentes do Hive Mind...")
     await load_agents_from_directory('agents', hub_mcp)
-    tools = hub_mcp.tools
+    tools = await hub_mcp.get_tools()
     print(f"✅ Agentes carregados. Total de ferramentas no hub: {len(tools)}")
 
 if __name__ == "__main__":
